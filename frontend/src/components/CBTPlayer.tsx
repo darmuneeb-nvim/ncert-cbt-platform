@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import { api, API_BASE_URL } from "../api";
-import type { Question, TestSubmissionResult } from "../api";
+import type { Question, TestSubmissionResult, Paper } from "../api";
 import { Clock, Award, AlertTriangle, Eye, Zap } from "lucide-react";
 import confetti from "canvas-confetti";
+import { NCERT_TAXONOMY } from "../taxonomy";
 
 interface QuestionState {
   question: Question;
@@ -16,6 +17,30 @@ export default function CBTPlayer() {
   const [testLimit, setTestLimit] = useState(() => {
     return Number(localStorage.getItem("cbt_limit") || "10");
   });
+
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+  const [selectedPapers, setSelectedPapers] = useState<number[]>([]);
+  const [papers, setPapers] = useState<Paper[]>([]);
+
+  useEffect(() => {
+    api.getPapers().then(setPapers).catch(console.error);
+  }, []);
+
+  // Reset selected chapters if active subjects change
+  useEffect(() => {
+    const activeSubjs = isAdvancedActive 
+      ? Object.keys(subjectLimits).filter(subj => subjectLimits[subj] > 0)
+      : selectedSubjects;
+      
+    const validChapters: string[] = [];
+    activeSubjs.forEach(subj => {
+      if (NCERT_TAXONOMY[subj]) {
+        validChapters.push(...Object.keys(NCERT_TAXONOMY[subj]));
+      }
+    });
+    
+    setSelectedChapters(prev => prev.filter(c => validChapters.includes(c)));
+  }, [selectedSubjects, subjectLimits, isAdvancedActive]);
   
   // Multiselect & Advanced options states
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(() => {
@@ -123,6 +148,13 @@ export default function CBTPlayer() {
       params.subjects = selectedSubjects;
       params.difficulties = selectedDifficulties;
       params.limit = testLimit;
+    }
+
+    if (selectedChapters.length > 0) {
+      params.chapters = selectedChapters;
+    }
+    if (selectedPapers.length > 0) {
+      params.paper_ids = selectedPapers;
     }
     
     // Compatibility fallback for API
@@ -551,13 +583,106 @@ export default function CBTPlayer() {
               <div className="form-group">
                 <label className="form-label">Questions Count</label>
                 <select className="form-select" value={testLimit} onChange={(e) => setTestLimit(Number(e.target.value))}>
-                  <option value={5}>5 Questions (Quick Check)</option>
-                  <option value={10}>10 Questions (Standard Drill)</option>
-                  <option value={15}>15 Questions (Intense Run)</option>
-                  <option value={30}>30 Questions (Full Mock)</option>
+                  <option value={5}>5 Questions</option>
+                  <option value={10}>10 Questions</option>
+                  <option value={20}>20 Questions</option>
+                  <option value={45}>45 Questions</option>
+                  <option value={90}>90 Questions</option>
+                  <option value={180}>180 Questions</option>
                 </select>
               </div>
             )}
+
+            {/* Chapters Multiselect */}
+            <div className="form-group">
+              <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
+                Select Chapters (Optional - Multiselect)
+              </label>
+              {(isAdvancedActive ? Object.keys(subjectLimits).filter(s => subjectLimits[s] > 0) : selectedSubjects).length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "10px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
+                  Select at least one subject to view chapters.
+                </div>
+              ) : (
+                <div style={{
+                  maxHeight: "140px",
+                  overflowY: "auto",
+                  padding: "10px",
+                  backgroundColor: "rgba(0,0,0,0.2)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--border-radius-sm)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px"
+                }}>
+                  {(isAdvancedActive ? Object.keys(subjectLimits).filter(s => subjectLimits[s] > 0) : selectedSubjects)
+                    .flatMap(subj => Object.keys(NCERT_TAXONOMY[subj] || {}))
+                    .sort()
+                    .map(chapter => {
+                      const isSelected = selectedChapters.includes(chapter);
+                      return (
+                        <label key={chapter} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: isSelected ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                          <input 
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedChapters(prev => 
+                                prev.includes(chapter) ? prev.filter(c => c !== chapter) : [...prev, chapter]
+                              );
+                            }}
+                            style={{ accentColor: "var(--primary)" }}
+                          />
+                          <span>{chapter}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Source Paper Multiselect */}
+            <div className="form-group">
+              <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
+                Select Source Paper (Optional - Multiselect)
+              </label>
+              {papers.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "10px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
+                  No papers ingested yet. Upload some in the Ingestion tab.
+                </div>
+              ) : (
+                <div style={{
+                  maxHeight: "120px",
+                  overflowY: "auto",
+                  padding: "10px",
+                  backgroundColor: "rgba(0,0,0,0.2)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--border-radius-sm)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px"
+                }}>
+                  {papers.map(p => {
+                    const isSelected = selectedPapers.includes(p.id);
+                    return (
+                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: isSelected ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                        <input 
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedPapers(prev => 
+                              prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                            );
+                          }}
+                          style={{ accentColor: "var(--primary)" }}
+                        />
+                        <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={p.filename}>
+                          {p.filename}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Advanced Subject Limits Panel */}
             {isAdvancedActive && (
