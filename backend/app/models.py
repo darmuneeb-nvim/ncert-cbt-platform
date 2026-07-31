@@ -27,7 +27,18 @@ class Question(Base):
     correct_answer = Column(String, nullable=True)
     explanation = Column(String, nullable=True)
     tagging_status = Column(String, default="untagged") # untagged | subject_tagged | fully_tagged | needs_review
+    images = Column(String, nullable=True) # JSON list of string filenames
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    @property
+    def images_list(self) -> list[str]:
+        if not self.images:
+            return []
+        import json
+        try:
+            return json.loads(self.images)
+        except Exception:
+            return []
 
     # Relationships
     paper = relationship("Paper", back_populates="questions")
