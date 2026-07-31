@@ -106,7 +106,7 @@ def parse_pdf_to_questions(file_path: str) -> Dict[str, Any]:
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.gemini_api_key)
-            model = genai.GenerativeModel("gemini-3.5-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
             
             key_prompt = f"""
 Analyze the following text block from the end of an Indian mock test paper (JEE/NEET) and extract the Answer Key.
@@ -159,7 +159,7 @@ Text Block:
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.gemini_api_key)
-            model = genai.GenerativeModel("gemini-3.5-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
             
             for idx, group in enumerate(page_groups):
                 logger.info(f"Parsing page group {idx + 1}/{len(page_groups)} via Gemini...")
@@ -246,7 +246,7 @@ Exam Paper Text Group:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=settings.gemini_api_key)
-                model = genai.GenerativeModel("gemini-3.5-flash")
+                model = genai.GenerativeModel("gemini-1.5-flash")
                 
                 expl_prompt = f"""
 Analyze the following text block containing Solutions and Explanations for the exam questions.
