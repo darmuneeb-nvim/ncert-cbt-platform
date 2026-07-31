@@ -50,6 +50,8 @@ export default function CBTPlayer() {
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
   const [selectedPapers, setSelectedPapers] = useState<number[]>([]);
   const [papers, setPapers] = useState<Paper[]>([]);
+  const [chapterSearch, setChapterSearch] = useState("");
+  const [paperSearch, setPaperSearch] = useState("");
 
   useEffect(() => {
     api.getPapers().then(setPapers).catch(console.error);
@@ -70,6 +72,22 @@ export default function CBTPlayer() {
     
     setSelectedChapters(prev => prev.filter(c => validChapters.includes(c)));
   }, [selectedSubjects, subjectLimits, isAdvancedActive]);
+
+  const activeSubjs = isAdvancedActive 
+    ? Object.keys(subjectLimits).filter(subj => subjectLimits[subj] > 0)
+    : selectedSubjects;
+
+  const activeChapters = activeSubjs.flatMap(subj => 
+    Object.keys(NCERT_TAXONOMY[subj] || {}).map(chapter => ({ chapter, subject: subj }))
+  ).sort((a, b) => a.chapter.localeCompare(b.chapter));
+
+  const filteredChapters = activeChapters.filter(item => 
+    item.chapter.toLowerCase().includes(chapterSearch.toLowerCase())
+  );
+
+  const filteredPapers = papers.filter(p => 
+    p.filename.toLowerCase().includes(paperSearch.toLowerCase())
+  );
 
   // Persist configurations to localStorage
   useEffect(() => {
@@ -595,91 +613,219 @@ export default function CBTPlayer() {
 
             {/* Chapters Multiselect */}
             <div className="form-group">
-              <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
-                Select Chapters (Optional - Multiselect)
-              </label>
-              {(isAdvancedActive ? Object.keys(subjectLimits).filter(s => subjectLimits[s] > 0) : selectedSubjects).length === 0 ? (
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "10px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <label className="form-label" style={{ margin: 0 }}>
+                  Select Chapters (Optional)
+                </label>
+                {activeChapters.length > 0 && (
+                  <div style={{ display: "flex", gap: "10px", fontSize: "0.75rem" }}>
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedChapters(activeChapters.map(c => c.chapter))}
+                      style={{ background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontWeight: "600", padding: 0 }}
+                    >
+                      Select All
+                    </button>
+                    <span style={{ color: "var(--text-muted)" }}>|</span>
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedChapters([])}
+                      style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontWeight: "600", padding: 0 }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              {activeChapters.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "12px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
                   Select at least one subject to view chapters.
                 </div>
               ) : (
-                <div style={{
-                  maxHeight: "140px",
-                  overflowY: "auto",
-                  padding: "10px",
-                  backgroundColor: "rgba(0,0,0,0.2)",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "var(--border-radius-sm)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px"
-                }}>
-                  {(isAdvancedActive ? Object.keys(subjectLimits).filter(s => subjectLimits[s] > 0) : selectedSubjects)
-                    .flatMap(subj => Object.keys(NCERT_TAXONOMY[subj] || {}))
-                    .sort()
-                    .map(chapter => {
-                      const isSelected = selectedChapters.includes(chapter);
-                      return (
-                        <label key={chapter} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: isSelected ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                          <input 
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              setSelectedChapters(prev => 
-                                prev.includes(chapter) ? prev.filter(c => c !== chapter) : [...prev, chapter]
-                              );
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <input 
+                    type="text"
+                    placeholder="Search chapters..."
+                    className="form-input"
+                    value={chapterSearch}
+                    onChange={(e) => setChapterSearch(e.target.value)}
+                    style={{ padding: "8px 12px", fontSize: "0.8rem", height: "34px", backgroundColor: "rgba(0,0,0,0.1)" }}
+                  />
+                  
+                  <div style={{
+                    maxHeight: "140px",
+                    overflowY: "auto",
+                    padding: "8px 10px",
+                    backgroundColor: "rgba(0,0,0,0.2)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "var(--border-radius-sm)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px"
+                  }}>
+                    {filteredChapters.length === 0 ? (
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>
+                        No chapters match your search.
+                      </div>
+                    ) : (
+                      filteredChapters.map(({ chapter, subject }) => {
+                        const isSelected = selectedChapters.includes(chapter);
+                        const subjectColor = 
+                          subject === "Physics" ? "var(--primary)" :
+                          subject === "Chemistry" ? "var(--warning)" :
+                          subject === "Biology" ? "var(--success)" :
+                          "#8b5cf6";
+                          
+                        return (
+                          <label 
+                            key={chapter} 
+                            style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "space-between",
+                              fontSize: "0.85rem", 
+                              cursor: "pointer", 
+                              color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                              padding: "4px 6px",
+                              borderRadius: "4px",
+                              backgroundColor: isSelected ? "rgba(255,255,255,0.03)" : "transparent",
+                              transition: "background-color 0.15s ease"
                             }}
-                            style={{ accentColor: "var(--primary)" }}
-                          />
-                          <span>{chapter}</span>
-                        </label>
-                      );
-                    })}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexGrow: 1, overflow: "hidden" }}>
+                              <input 
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setSelectedChapters(prev => 
+                                    prev.includes(chapter) ? prev.filter(c => c !== chapter) : [...prev, chapter]
+                                  );
+                                }}
+                                style={{ accentColor: "var(--primary)" }}
+                              />
+                              <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                {chapter}
+                              </span>
+                            </div>
+                            <span style={{ 
+                              fontSize: "0.65rem", 
+                              fontWeight: "600", 
+                              padding: "2px 6px", 
+                              borderRadius: "10px", 
+                              backgroundColor: `${subjectColor}15`, 
+                              color: subjectColor,
+                              border: `1px solid ${subjectColor}30`,
+                              marginLeft: "8px",
+                              flexShrink: 0
+                            }}>
+                              {subject.substring(0, 3)}
+                            </span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               )}
             </div>
 
             {/* Source Paper Multiselect */}
             <div className="form-group">
-              <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
-                Select Source Paper (Optional - Multiselect)
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <label className="form-label" style={{ margin: 0 }}>
+                  Select Source Paper (Optional)
+                </label>
+                {papers.length > 0 && (
+                  <div style={{ display: "flex", gap: "10px", fontSize: "0.75rem" }}>
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedPapers(papers.map(p => p.id))}
+                      style={{ background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontWeight: "600", padding: 0 }}
+                    >
+                      Select All
+                    </button>
+                    <span style={{ color: "var(--text-muted)" }}>|</span>
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedPapers([])}
+                      style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontWeight: "600", padding: 0 }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+              
               {papers.length === 0 ? (
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "10px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "12px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
                   No papers ingested yet. Upload some in the Ingestion tab.
                 </div>
               ) : (
-                <div style={{
-                  maxHeight: "120px",
-                  overflowY: "auto",
-                  padding: "10px",
-                  backgroundColor: "rgba(0,0,0,0.2)",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "var(--border-radius-sm)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px"
-                }}>
-                  {papers.map(p => {
-                    const isSelected = selectedPapers.includes(p.id);
-                    return (
-                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", cursor: "pointer", color: isSelected ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                        <input 
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {
-                            setSelectedPapers(prev => 
-                              prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
-                            );
-                          }}
-                          style={{ accentColor: "var(--primary)" }}
-                        />
-                        <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={p.filename}>
-                          {p.filename}
-                        </span>
-                      </label>
-                    );
-                  })}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <input 
+                    type="text"
+                    placeholder="Search papers..."
+                    className="form-input"
+                    value={paperSearch}
+                    onChange={(e) => setPaperSearch(e.target.value)}
+                    style={{ padding: "8px 12px", fontSize: "0.8rem", height: "34px", backgroundColor: "rgba(0,0,0,0.1)" }}
+                  />
+                  
+                  <div style={{
+                    maxHeight: "120px",
+                    overflowY: "auto",
+                    padding: "8px 10px",
+                    backgroundColor: "rgba(0,0,0,0.2)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "var(--border-radius-sm)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px"
+                  }}>
+                    {filteredPapers.length === 0 ? (
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>
+                        No papers match your search.
+                      </div>
+                    ) : (
+                      filteredPapers.map(p => {
+                        const isSelected = selectedPapers.includes(p.id);
+                        return (
+                          <label 
+                            key={p.id} 
+                            style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "space-between",
+                              fontSize: "0.85rem", 
+                              cursor: "pointer", 
+                              color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                              padding: "4px 6px",
+                              borderRadius: "4px",
+                              backgroundColor: isSelected ? "rgba(255,255,255,0.03)" : "transparent",
+                              transition: "background-color 0.15s ease"
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexGrow: 1, overflow: "hidden" }}>
+                              <input 
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setSelectedPapers(prev => 
+                                    prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                                  );
+                                }}
+                                style={{ accentColor: "var(--primary)" }}
+                              />
+                              <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={p.filename}>
+                                {p.filename}
+                              </span>
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               )}
             </div>
