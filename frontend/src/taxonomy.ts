@@ -1,0 +1,62 @@
+export const NCERT_TAXONOMY: Record<string, Record<string, string[]>> = {
+  Physics: {
+    "Physical World and Measurement": ["Units and Measurements", "Dimensional Analysis", "Errors in Measurement"],
+    "Kinematics": ["Motion in a Straight Line", "Motion in a Plane", "Projectile Motion", "Relative Velocity"],
+    "Laws of Motion": ["Newton's Laws", "Friction", "Circular Motion"],
+    "Work, Energy and Power": ["Work-Energy Theorem", "Potential and Kinetic Energy", "Collisions"],
+    "Rotational Motion": ["Center of Mass", "Moment of Inertia", "Torque and Angular Momentum"],
+    "Gravitation": ["Kepler's Laws", "Universal Law of Gravitation", "Gravitational Potential Energy", "Escape Velocity"],
+    "Thermodynamics": ["First Law of Thermodynamics", "Heat Engines and Refrigerators", "Second Law of Thermodynamics"],
+    "Oscillations and Waves": ["Simple Harmonic Motion", "Damped and Forced Oscillations", "Wave Speed and Intensity", "Doppler Effect"],
+    "Electrostatics": ["Coulomb's Law", "Electric Field and Gauss Law", "Electric Potential", "Capacitors"],
+    "Current Electricity": ["Ohm's Law", "Kirchhoff's Laws", "Potentiometer and Wheatstone Bridge"],
+    "Magnetic Effects of Current and Magnetism": ["Biot-Savart Law", "Ampere's Law", "Moving Charges in Magnetic Fields", "Magnetic Properties of Matter"],
+    "Electromagnetic Induction and AC": ["Faraday's and Lenz's Laws", "Self and Mutual Induction", "Alternating Current Circuits", "LC Oscillations"],
+    "Optics": ["Reflection and Refraction", "Lenses and Prisms", "Interference", "Diffraction", "Polarization"],
+    "Modern Physics": ["Dual Nature of Matter and Radiation", "Atoms and Bohr Model", "Nuclei and Radioactivity", "Semiconductors and Logic Gates"]
+  },
+  Chemistry: {
+    "Some Basic Concepts of Chemistry": ["Mole Concept", "Stoichiometry", "Empirical and Molecular Formulas"],
+    "Structure of Atom": ["Bohr's Model", "Quantum Numbers", "Electronic Configuration"],
+    "Classification of Elements": ["Periodic Table Trends", "Ionization Enthalpy", "Electronegativity"],
+    "Chemical Bonding": ["VSEPR Theory", "Hybridization", "Molecular Orbital Theory", "Hydrogen Bonding"],
+    "Chemical Thermodynamics": ["Enthalpy and Entropy", "Gibbs Free Energy", "Spontaneity"],
+    "Equilibrium": ["Chemical Equilibrium", "Le Chatelier's Principle", "Ionic Equilibrium and pH", "Buffer Solutions", "Solubility Product"],
+    "Redox Reactions and Electrochemistry": ["Oxidation Numbers", "Galvanic Cells", "Nernst Equation", "Faraday's Laws of Electrolysis"],
+    "Chemical Kinetics": ["Rate Laws", "Order and Molecularity", "Arrhenius Equation", "Catalysis"],
+    "Organic Chemistry - Basic Principles": ["IUPAC Nomenclature", "Isomerism", "Inductive and Resonance Effects", "Reaction Mechanisms"],
+    "Hydrocarbons": ["Alkanes", "Alkenes", "Alkynes", "Aromatic Hydrocarbons"],
+    "Haloalkanes and Haloarenes": ["SN1 and SN2 Mechanisms", "Nucleophilic Substitution", "Electrophilic Substitution"],
+    "Alcohols, Phenols and Ethers": ["Acidic Strength of Phenols", "Preparation and Reactions of Alcohols", "Ether Synthesis"],
+    "Aldehydes, Ketones and Carboxylic Acids": ["Nucleophilic Addition", "Aldol Condensation", "Cannizzaro Reaction", "Acidity of Carboxylic Acids"],
+    "Organic Compounds Containing Nitrogen": ["Amines Preparation and Basicity", "Diazonium Salts"],
+    "Biomolecules": ["Carbohydrates Structure", "Proteins and Amino Acids", "Nucleic Acids"]
+  },
+  Biology: {
+    "Diversity in Living World": ["What is Living?", "Five Kingdom Classification", "Plant Kingdom", "Animal Kingdom"],
+    "Structural Organisation": ["Plant Anatomy", "Animal Tissues", "Cockroach Anatomy"],
+    "Cell: Structure and Functions": ["Cell Theory", "Organelles", "Biomolecules", "Cell Cycle and Mitosis/Meiosis"],
+    "Plant Physiology": ["Photosynthesis in Higher Plants", "Respiration in Plants", "Plant Growth and Development"],
+    "Human Physiology": ["Breathing and Exchange of Gases", "Body Fluids and Circulation", "Excretory Products", "Locomotion and Movement", "Neural Control", "Chemical Coordination"],
+    "Reproduction": ["Sexual Reproduction in Flowering Plants", "Human Reproduction", "Reproductive Health"],
+    "Genetics and Evolution": ["Mendelian Inheritance", "Molecular Basis of Inheritance", "Evolution Theories", "Evidence of Evolution"],
+    "Biology in Human Welfare": ["Human Health and Diseases", "Microbes in Human Welfare"],
+    "Biotechnology": ["Principles and Processes", "Applications of Biotechnology"],
+    "Ecology and Environment": ["Organisms and Populations", "Ecosystem", "Biodiversity and Conservation"]
+  },
+  Mathematics: {
+    "Sets, Relations and Functions": ["Types of Relations", "Composite Functions", "Inverse Functions"],
+    "Complex Numbers and Quadratic Equations": ["Properties of Complex Numbers", "Roots of Quadratic Equations", "Location of Roots"],
+    "Matrices and Determinants": ["Matrix Operations", "System of Linear Equations", "Properties of Determinants"],
+    "Permutations and Combinations": ["Fundamental Principle of Counting", "Permutations", "Combinations", "Circular Permutations"],
+    "Mathematical Induction and Binomial Theorem": ["General Term of Binomial Expansion", "Binomial Coefficients"],
+    "Sequences and Series": ["Arithmetic Progression", "Geometric Progression", "Arithmetico-Geometric Progression", "Sum of Series"],
+    "Limit, Continuity and Differentiability": ["Limits Evaluation", "Continuity Testing", "Differentiability of Functions", "Mean Value Theorems"],
+    "Integral Calculus": ["Indefinite Integrals", "Definite Integrals Properties", "Area Under Curves", "Differential Equations"],
+    "Coordinate Geometry": ["Straight Lines", "Circles", "Conic Sections"],
+    "Three Dimensional Geometry": ["Direction Cosines and Ratios", "Equations of Lines and Planes", "Distance Formulas"],
+    "Vector Algebra": ["Dot Product", "Cross Product", "Scalar Triple Product", "Vector Triple Product"],
+    "Statistics and Probability": ["Measures of Dispersion", "Conditional Probability", "Bayes Theorem", "Binomial Distribution"],
+    "Trigonometry": ["Trigonometric Ratios and Identities", "Trigonometric Equations", "Inverse Trigonometric Functions"]
+  }
+};
