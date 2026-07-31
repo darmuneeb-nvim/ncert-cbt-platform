@@ -70,7 +70,9 @@ const NCERT_TAXONOMY: Record<string, Record<string, string[]>> = {
 export default function Library() {
   // Papers state
   const [papers, setPapers] = useState<Paper[]>([]);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [currentUploadingIndex, setCurrentUploadingIndex] = useState(0);
   const [answerKeyInput, setAnswerKeyInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -153,44 +155,82 @@ export default function Library() {
     fetchQuestionsList(currentPage + 1, true);
   };
 
-  const handleFileUpload = (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selectedFiles = Array.from(e.target.files).filter(f => f.type === "application/pdf");
+      setFiles(prev => [...prev, ...selectedFiles]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!file) return;
+    setIsDragging(true);
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+      const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type === "application/pdf");
+      setFiles(prev => [...prev, ...droppedFiles]);
+    }
+  };
+
+  const handleFileUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (files.length === 0) return;
     
     setUploading(true);
-    setUploadStatus("Uploading file & extracting text...");
+    setUploadStatus("Uploading files...");
     setProgressPercent(0);
     
-    // Simulate progressive filling up to 90%
-    let currentProgress = 0;
-    const progressInterval = setInterval(() => {
-      if (currentProgress < 90) {
-        currentProgress += (90 - currentProgress) * 0.08;
-        setProgressPercent(currentProgress);
-      }
-    }, 200);
-    
-    api.uploadPaper(file, answerKeyInput || undefined)
-      .then((res) => {
+    for (let i = 0; i < files.length; i++) {
+      setCurrentUploadingIndex(i);
+      const currentFile = files[i];
+      setUploadStatus(`Uploading [${i + 1}/${files.length}] ${currentFile.name}...`);
+      setProgressPercent(0);
+      
+      let currentProgress = 0;
+      const progressInterval = setInterval(() => {
+        if (currentProgress < 90) {
+          currentProgress += (90 - currentProgress) * 0.08;
+          setProgressPercent(currentProgress);
+        }
+      }, 200);
+      
+      try {
+        const key = i === 0 ? (answerKeyInput || undefined) : undefined;
+        await api.uploadPaper(currentFile, key);
+        
         clearInterval(progressInterval);
         setProgressPercent(100);
-        
-        setTimeout(() => {
-          setUploading(false);
-          setProgressPercent(0);
-          setUploadStatus(`Upload completed. Parsed ${res.questions_parsed} questions successfully!`);
-          setFile(null);
-          setAnswerKeyInput("");
-          refreshPapers();
-          fetchQuestionsList();
-        }, 500);
-      })
-      .catch((err) => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch (err: any) {
         clearInterval(progressInterval);
         setProgressPercent(0);
         setUploading(false);
-        setUploadStatus(`Error: ${err.message || "Failed to process PDF."}`);
-      });
+        setUploadStatus(`Error uploading ${currentFile.name}: ${err.message || "Failed to process PDF."}`);
+        return;
+      }
+    }
+    
+    setUploading(false);
+    setProgressPercent(0);
+    setUploadStatus(`Successfully processed all ${files.length} papers!`);
+    setFiles([]);
+    setAnswerKeyInput("");
+    refreshPapers();
+    fetchQuestionsList();
   };
 
   const handleQuestionSelect = (q: Question) => {
@@ -325,28 +365,91 @@ export default function Library() {
           
           <form onSubmit={handleFileUpload} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div className="form-group" style={{ marginBottom: "0" }}>
-              <label className="form-label">Upload PDF mock paper</label>
+              <label className="form-label">Upload PDF mock paper(s)</label>
               <input 
                 type="file" 
                 accept="application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                multiple
+                onChange={handleFileChange}
                 style={{ display: "none" }}
                 id="file-upload"
+                disabled={uploading}
               />
               <label 
                 htmlFor="file-upload"
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 style={{
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  border: "2px dashed var(--border-color)", borderRadius: "var(--border-radius-sm)",
-                  padding: "20px", cursor: "pointer", backgroundColor: "rgba(0,0,0,0.2)"
+                  border: isDragging ? "2px dashed var(--primary)" : "2px dashed var(--border-color)", 
+                  borderRadius: "var(--border-radius-sm)",
+                  padding: "24px 20px", cursor: uploading ? "not-allowed" : "pointer",
+                  backgroundColor: isDragging ? "rgba(99, 102, 241, 0.15)" : "rgba(0,0,0,0.2)",
+                  boxShadow: isDragging ? "0 0 15px rgba(99, 102, 241, 0.2)" : "none",
+                  transition: "all 0.2s ease"
                 }}
               >
-                <FileText size={24} color={file ? "var(--primary)" : "var(--text-muted)"} style={{ marginBottom: "8px" }} />
-                <span style={{ fontSize: "0.85rem", fontWeight: "500", textAlign: "center" }}>
-                  {file ? file.name : "Select mock test PDF"}
+                <FileText size={24} color={(files.length > 0 || isDragging) ? "var(--primary)" : "var(--text-muted)"} style={{ marginBottom: "8px" }} />
+                <span style={{ fontSize: "0.85rem", fontWeight: "600", textAlign: "center", color: isDragging ? "var(--primary)" : "inherit" }}>
+                  {isDragging ? "Drop your PDFs here" : files.length > 0 ? `${files.length} file(s) selected` : "Select or Drag & Drop PDFs"}
+                </span>
+                <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "4px", textAlign: "center" }}>
+                  Supports multiple PDF uploads
                 </span>
               </label>
             </div>
+
+            {/* List of selected files with remove buttons */}
+            {files.length > 0 && (
+              <div style={{
+                maxHeight: "120px",
+                overflowY: "auto",
+                padding: "8px",
+                backgroundColor: "rgba(0,0,0,0.3)",
+                borderRadius: "var(--border-radius-sm)",
+                border: "1px solid var(--border-color)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px"
+              }}>
+                {files.map((f, idx) => (
+                  <div key={idx} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: "0.8rem",
+                    color: "var(--text-secondary)"
+                  }}>
+                    <span style={{
+                      textOverflow: "ellipsis",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      maxWidth: "230px"
+                    }} title={f.name}>
+                      📄 {f.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFiles(prev => prev.filter((_, i) => i !== idx))}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--danger)",
+                        cursor: "pointer",
+                        fontSize: "1.1rem",
+                        lineHeight: "1",
+                        padding: "0 4px"
+                      }}
+                      disabled={uploading}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label" style={{ display: "flex", alignItems: "center", justifyItems: "center", gap: "6px" }}>
@@ -361,13 +464,19 @@ export default function Library() {
                 value={answerKeyInput}
                 onChange={(e) => setAnswerKeyInput(e.target.value)}
                 style={{ height: "60px", fontSize: "0.8rem", fontFamily: "var(--font-mono)", resize: "none" }}
+                disabled={uploading}
               />
+              {files.length > 1 && answerKeyInput && (
+                <span style={{ fontSize: "0.7rem", color: "var(--warning)", marginTop: "4px" }}>
+                  ⚠️ Note: Answer key will only apply to the first PDF file ({files[0]?.name}).
+                </span>
+              )}
             </div>
 
             <button 
               type="submit" 
               className="btn btn-primary" 
-              disabled={!file || uploading}
+              disabled={files.length === 0 || uploading}
               style={{ 
                 width: "100%",
                 background: uploading 
@@ -377,7 +486,7 @@ export default function Library() {
                 transition: uploading ? "none" : "all 0.2s ease"
               }}
             >
-              {uploading ? `Ingesting (${Math.round(progressPercent)}%)...` : "Process Paper"}
+              {uploading ? `Ingesting [${currentUploadingIndex + 1}/${files.length}] (${Math.round(progressPercent)}%)...` : "Process Paper(s)"}
             </button>
           </form>
 
