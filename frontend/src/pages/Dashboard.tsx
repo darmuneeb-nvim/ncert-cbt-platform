@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "../api";
 import type { DashboardStats, Question } from "../api";
 import { 
@@ -35,19 +35,22 @@ export default function Dashboard() {
 
   // 1-Minute Timer States for Dashboard CBT Review attempts
   const [cbtTimeLeft, setCbtTimeLeft] = useState(60);
-  const [isCbtTimerActive, setIsCbtTimerActive] = useState(false);
+  const handleCbtSubmitAuto = useCallback(() => {
+    if (activeReviewIndex === null || questionsList.length === 0) return;
+    const activeQuestion = questionsList[activeReviewIndex];
+    setIsCbtChecked(true);
+    setIsCbtTimerActive(false);
 
-  useEffect(() => {
-    api.getDashboardStats()
-      .then((data) => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to load dashboard statistics.");
-        setLoading(false);
-      });
-  }, []);
+    api.submitTest([{
+      question_id: activeQuestion.id,
+      selected_answer: cbtSelectedAnswer || "",
+      time_spent: 60
+    }]).then(() => {
+      // Reload stats and update question's last_attempt_time locally in list
+      api.getDashboardStats().then(setStats);
+      setQuestionsList(prev => prev.map((q, i) => i === activeReviewIndex ? { ...q, last_attempt_time: 60 } : q));
+    }).catch(err => console.error(err));
+  }, [activeReviewIndex, questionsList, cbtSelectedAnswer]);
 
   // 1-Minute Timer countdown effect
   useEffect(() => {
@@ -68,24 +71,9 @@ export default function Dashboard() {
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [isCbtMode, isCbtTimerActive, cbtTimeLeft, isCbtChecked, activeReviewIndex]);
+  }, [isCbtMode, isCbtTimerActive, cbtTimeLeft, isCbtChecked, activeReviewIndex, handleCbtSubmitAuto]);
 
-  const handleCbtSubmitAuto = () => {
-    if (activeReviewIndex === null || questionsList.length === 0) return;
-    const activeQuestion = questionsList[activeReviewIndex];
-    setIsCbtChecked(true);
-    setIsCbtTimerActive(false);
 
-    api.submitTest([{
-      question_id: activeQuestion.id,
-      selected_answer: cbtSelectedAnswer || "",
-      time_spent: 60
-    }]).then(() => {
-      // Reload stats and update question's last_attempt_time locally in list
-      api.getDashboardStats().then(setStats);
-      setQuestionsList(prev => prev.map((q, i) => i === activeReviewIndex ? { ...q, last_attempt_time: 60 } : q));
-    }).catch(err => console.error(err));
-  };
 
   const handleCbtSubmitManual = () => {
     if (activeReviewIndex === null || questionsList.length === 0) return;
