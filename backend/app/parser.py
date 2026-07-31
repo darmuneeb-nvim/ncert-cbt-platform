@@ -20,6 +20,39 @@ try:
 except ImportError:
     logger.warning("pytesseract or pdf2image not found. OCR fallback will be disabled.")
 
+LATEXOCR_AVAILABLE = False
+try:
+    from pix2tex.cli import LatexOCR
+    LATEXOCR_AVAILABLE = True
+except ImportError:
+    logger.warning("pix2tex not found. LaTeX OCR fallback will be disabled.")
+
+latex_ocr_model = None
+
+def get_latex_ocr():
+    global latex_ocr_model
+    if not LATEXOCR_AVAILABLE:
+        return None
+    if latex_ocr_model is None:
+        logger.info("Initializing LatexOCR model (this may take a few seconds on first load)...")
+        try:
+            latex_ocr_model = LatexOCR()
+        except Exception as e:
+            logger.error(f"Failed to initialize LatexOCR model: {e}")
+            return None
+    return latex_ocr_model
+
+def is_equation_heavy(text: str) -> bool:
+    if not text or not text.strip():
+        return False
+    # Count math symbols and operators
+    math_chars = sum(1 for c in text if c in "=+-*/^_{}()\\∫∑√πθαβγλω[]$")
+    # If math characters represent more than 3% of the text, or if common math/physics keywords appear
+    math_keywords = ["sin", "cos", "tan", "log", "lim", "theta", "alpha", "beta", "gamma", "lambda", "omega", "dy/dx", "dx", "dt"]
+    has_keyword = any(kw in text.lower() for kw in math_keywords)
+    ratio = math_chars / len(text)
+    return ratio > 0.03 or has_keyword
+
 def clean_junk_advertisement_lines(text: str) -> str:
     if not text:
         return text
@@ -90,11 +123,78 @@ def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
             try:
                 images = convert_from_path(file_path)
                 pages = []
+                
+                # Check if we should initialize LatexOCR
+                latex_ocr = get_latex_ocr()
+                
                 for idx, img in enumerate(images):
                     logger.info(f"OCRing page {idx + 1}/{len(images)}...")
                     p_text = f"\n--- Page {idx + 1} ---\n"
-                    p_text += pytesseract.image_to_string(img)
+                    
+                    # Run standard Tesseract OCR first to get plain text
+                    raw_ocr_text = pytesseract.image_to_string(img)
+                    
+                    # If LatexOCR is available and page is equation-heavy:
+                    if latex_ocr and is_equation_heavy(raw_ocr_text):
+                        logger.info(f"Page {idx + 1} is flagged as equation-heavy. Running LatexOCR enhancement...")
+                        try:
+                            # Use Tesseract's image_to_data to find layout bounding boxes
+                            data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+                            
+                            # Group words by block and line numbers to form line coordinates
+                            line_words = {}
+                            for w_idx in range(len(data['text'])):
+                                word_txt = data['text'][w_idx].strip()
+                                if word_txt:
+                                    block_num = data['block_num'][w_idx]
+                                    line_num = data['line_num'][w_idx]
+                                    key = (block_num, line_num)
+                                    if key not in line_words:
+                                        line_words[key] = []
+                                    line_words[key].append({
+                                        'text': word_txt,
+                                        'left': data['left'][w_idx],
+                                        'top': data['top'][w_idx],
+                                        'width': data['width'][w_idx],
+                                        'height': data['height'][w_idx]
+                                    })
+                            
+                            page_lines = []
+                            # Process lines in order of their block and line ID
+                            for key in sorted(line_words.keys()):
+                                words = line_words[key]
+                                line_text = " ".join([w['text'] for w in words])
+                                
+                                # Check if individual line is equation-heavy
+                                if is_equation_heavy(line_text) and len(line_text) > 2:
+                                    # Crop the line image with small padding
+                                    min_left = max(0, min([w['left'] for w in words]) - 8)
+                                    min_top = max(0, min([w['top'] for w in words]) - 8)
+                                    max_right = min(img.width, max([w['left'] + w['width'] for w in words]) + 8)
+                                    max_bottom = min(img.height, max([w['top'] + w['height'] for w in words]) + 8)
+                                    
+                                    if max_right > min_left and max_bottom > min_top:
+                                        line_crop = img.crop((min_left, min_top, max_right, max_bottom))
+                                        try:
+                                            # Transcribe line to LaTeX
+                                            latex_val = latex_ocr(line_crop)
+                                            if latex_val and latex_val.strip():
+                                                # Wrap in LaTeX notation
+                                                line_text = f"${latex_val.strip()}$"
+                                        except Exception as ocr_err:
+                                            logger.error(f"LatexOCR line transcription failed: {ocr_err}")
+                                
+                                page_lines.append(line_text)
+                            
+                            p_text += "\n".join(page_lines)
+                        except Exception as data_err:
+                            logger.error(f"Failed image_to_data layout parsing: {data_err}")
+                            p_text += raw_ocr_text
+                    else:
+                        p_text += raw_ocr_text
+                        
                     pages.append(p_text)
+                
                 total_text = "\n".join(pages)
                 is_ocr = True
             except Exception as e:
