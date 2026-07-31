@@ -17,30 +17,6 @@ export default function CBTPlayer() {
   const [testLimit, setTestLimit] = useState(() => {
     return Number(localStorage.getItem("cbt_limit") || "10");
   });
-
-  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
-  const [selectedPapers, setSelectedPapers] = useState<number[]>([]);
-  const [papers, setPapers] = useState<Paper[]>([]);
-
-  useEffect(() => {
-    api.getPapers().then(setPapers).catch(console.error);
-  }, []);
-
-  // Reset selected chapters if active subjects change
-  useEffect(() => {
-    const activeSubjs = isAdvancedActive 
-      ? Object.keys(subjectLimits).filter(subj => subjectLimits[subj] > 0)
-      : selectedSubjects;
-      
-    const validChapters: string[] = [];
-    activeSubjs.forEach(subj => {
-      if (NCERT_TAXONOMY[subj]) {
-        validChapters.push(...Object.keys(NCERT_TAXONOMY[subj]));
-      }
-    });
-    
-    setSelectedChapters(prev => prev.filter(c => validChapters.includes(c)));
-  }, [selectedSubjects, subjectLimits, isAdvancedActive]);
   
   // Multiselect & Advanced options states
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(() => {
@@ -70,6 +46,30 @@ export default function CBTPlayer() {
       return { Physics: 5, Chemistry: 5, Biology: 5, Mathematics: 5 };
     }
   });
+
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+  const [selectedPapers, setSelectedPapers] = useState<number[]>([]);
+  const [papers, setPapers] = useState<Paper[]>([]);
+
+  useEffect(() => {
+    api.getPapers().then(setPapers).catch(console.error);
+  }, []);
+
+  // Reset selected chapters if active subjects change
+  useEffect(() => {
+    const activeSubjs = isAdvancedActive 
+      ? Object.keys(subjectLimits).filter(subj => subjectLimits[subj] > 0)
+      : selectedSubjects;
+      
+    const validChapters: string[] = [];
+    activeSubjs.forEach(subj => {
+      if (NCERT_TAXONOMY[subj]) {
+        validChapters.push(...Object.keys(NCERT_TAXONOMY[subj]));
+      }
+    });
+    
+    setSelectedChapters(prev => prev.filter(c => validChapters.includes(c)));
+  }, [selectedSubjects, subjectLimits, isAdvancedActive]);
 
   // Persist configurations to localStorage
   useEffect(() => {
