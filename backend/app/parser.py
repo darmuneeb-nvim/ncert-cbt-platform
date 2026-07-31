@@ -189,16 +189,54 @@ Text Block:
     if settings.gemini_api_key:
         try:
             import google.generativeai as genai
+            from PIL import Image
             genai.configure(api_key=settings.gemini_api_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
+            
+            # Recreate image folder path to match group files
+            images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "images", f"paper_{paper_id}")
             
             for idx, group in enumerate(page_groups):
                 logger.info(f"Parsing page group {idx + 1}/{len(page_groups)} via Gemini...")
                 group_text = "\n".join(group)
                 
+                # Determine page range of this group
+                start_page_num = idx * group_size + 1
+                end_page_num = min(start_page_num + len(group) - 1, len(doc))
+                
+                # Gather images matching this page range
+                group_images = []
+                for page_num in range(start_page_num, end_page_num + 1):
+                    prefix = f"page_{page_num}_img_"
+                    if os.path.exists(images_dir):
+                        for f_name in sorted(os.listdir(images_dir)):
+                            if f_name.startswith(prefix):
+                                group_images.append(os.path.join(images_dir, f_name))
+                
+                contents = []
+                images_manifest = ""
+                
+                if group_images:
+                    images_manifest = "The following images/diagrams from these pages are provided to you as input payloads in the request order:\n"
+                    for img_idx, img_path in enumerate(group_images):
+                        try:
+                            f_name = os.path.basename(img_path)
+                            img_obj = Image.open(img_path)
+                            contents.append(img_obj)
+                            images_manifest += f"- Payload Image {img_idx + 1} corresponds to filename: \"{f_name}\"\n"
+                        except Exception as img_err:
+                            logger.error(f"Failed to load image {img_path}: {img_err}")
+                    
+                    images_manifest += """
+If any question relies on or refers to a diagram/image provided in the request payload, you MUST map that image filename from the list above to the question's 'images' array.
+For example, if Question 3 refers to Payload Image 1, set its 'images' to ["page_1_img_0.png"] (using the exact filename matched from the list above). If no diagram belongs to the question, set 'images' to null or an empty list.
+"""
+
                 prompt = f"""
 You are an expert Indian entrance exam (JEE Main / NEET) parsing system.
 Analyze the following text from a group of pages in an exam paper and extract all questions.
+
+{images_manifest}
 
 For each question, extract:
 - question_number: The integer index of the question (e.g., 1, 2, 51). Pay special attention to the number written next to the question statement. Do NOT assign everything to 1.
@@ -209,6 +247,7 @@ For each question, extract:
   * MATCH type questions columns (such as List-I and List-II lists) must remain inside the `raw_content`. The `options` list must only contain the final choice combinations (e.g. A-I, B-II, C-III, D-IV). Never treat column entries as separate options.
 - correct_answer: The correct option character (A, B, C, D) if found in this text block. Otherwise null.
 - explanation: Any embedded solution explanation if found in this text block. Otherwise null.
+- images: A list of string filenames (e.g. ["page_1_img_0.png"]) matched from the provided image payload manifest if the question has an associated diagram. Otherwise null.
 
 Return the result STRICTLY as a JSON object with this schema:
 {{
@@ -219,7 +258,8 @@ Return the result STRICTLY as a JSON object with this schema:
       "question_type": "MCQ" | "AR" | "MATCH" | "NUMERICAL",
       "options": ["string"] or null,
       "correct_answer": "string" or null,
-      "explanation": "string" or null
+      "explanation": "string" or null,
+      "images": ["string"] or null
     }}
   ]
 }}
@@ -227,8 +267,10 @@ Return the result STRICTLY as a JSON object with this schema:
 Exam Paper Text Group:
 {group_text}
 """
+                contents.append(prompt)
+                
                 response = model.generate_content(
-                    prompt,
+                    contents,
                     generation_config={"response_mime_type": "application/json"}
                 )
                 data = json.loads(response.text)
