@@ -1,0 +1,12 @@
+[Unit]
+Description=NCERT-CBT Frontend Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/admin/.config/project 01/frontend
+ExecStart=/usr/bin/npm run dev
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

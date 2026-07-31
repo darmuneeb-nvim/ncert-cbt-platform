@@ -1,0 +1,13 @@
+[Unit]
+Description=NCERT-CBT Backend Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/admin/.config/project 01/backend
+EnvironmentFile=/home/admin/.config/project 01/.env
+ExecStart=/home/admin/.config/project 01/venv/bin/python run.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
