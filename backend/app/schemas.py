@@ -60,6 +60,7 @@ class QuestionResponse(QuestionBase):
     created_at: datetime
     tags: Optional[QuestionTagResponse] = None
     last_attempt_time: Optional[int] = None
+    images_list: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
