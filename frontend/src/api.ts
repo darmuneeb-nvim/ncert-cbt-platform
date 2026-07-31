@@ -280,6 +280,8 @@ export interface HistorySubmissionItem {
   result: "correct" | "wrong" | "skipped";
   time_spent: number;
   subject: string;
+  paper_id: number;
+  images_list?: string[] | null;
 }
 
 export interface QuizSessionAttempt {
