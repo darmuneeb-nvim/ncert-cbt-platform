@@ -43,6 +43,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+
+# Mount static files directory for extracted images
+images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "images")
+os.makedirs(images_dir, exist_ok=True)
+app.mount("/api/images", StaticFiles(directory=images_dir), name="images")
+
 # ----------------------------------------------------
 # INGESTION ENDPOINTS
 # ----------------------------------------------------
@@ -79,7 +86,7 @@ async def upload_paper(
     db.refresh(paper)
 
     # 1. Run parsing pipeline
-    parsed_data = parse_pdf_to_questions(file_path)
+    parsed_data = parse_pdf_to_questions(file_path, paper.id)
     
     questions_list = parsed_data.get("questions", [])
     extracted_key = parsed_data.get("answer_key", {})
@@ -104,7 +111,8 @@ async def upload_paper(
             options=opts_json,
             correct_answer=corr_ans,
             explanation=q_data.get("explanation"),
-            tagging_status="untagged"
+            tagging_status="untagged",
+            images=json.dumps(q_data.get("images")) if q_data.get("images") else None
         )
         db.add(question)
 
