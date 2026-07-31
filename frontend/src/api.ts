@@ -136,6 +136,7 @@ export const api = {
     difficulty?: string;
     tagging_status?: string;
     question_type?: string;
+    paper_id?: number;
     page?: number;
     limit?: number;
   }): Promise<{ total: number; questions: Question[] }> {
@@ -145,6 +146,7 @@ export const api = {
     if (params.difficulty) searchParams.append("difficulty", params.difficulty);
     if (params.tagging_status) searchParams.append("tagging_status", params.tagging_status);
     if (params.question_type) searchParams.append("question_type", params.question_type);
+    if (params.paper_id) searchParams.append("paper_id", String(params.paper_id));
     if (params.page) searchParams.append("page", String(params.page));
     if (params.limit) searchParams.append("limit", String(params.limit));
 
