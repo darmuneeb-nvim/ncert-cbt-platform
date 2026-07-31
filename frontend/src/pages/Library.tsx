@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "../api";
 import type { Question, Paper } from "../api";
 import { Upload, HelpCircle, FileText, Check, Filter, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
@@ -109,11 +109,11 @@ export default function Library() {
   const [matchingPaper, setMatchingPaper] = useState<Paper | null>(null);
   const [manualKeyText, setManualKeyText] = useState("");
 
-  const refreshPapers = () => {
+  const refreshPapers = useCallback(() => {
     api.getPapers().then(setPapers).catch(console.error);
-  };
+  }, []);
 
-  const fetchQuestionsList = (pageToFetch: number = 1, append: boolean = false) => {
+  const fetchQuestionsList = useCallback((pageToFetch: number = 1, append: boolean = false) => {
     setLoadingQuestions(true);
     api.getQuestions({
       subject: filterSubject || undefined,
@@ -136,16 +136,16 @@ export default function Library() {
       console.error(err);
       setLoadingQuestions(false);
     });
-  };
+  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType]);
 
   useEffect(() => {
     refreshPapers();
-  }, []);
+  }, [refreshPapers]);
 
   useEffect(() => {
     fetchQuestionsList(1, false);
     setSelectedIds([]); // reset selection when filters change
-  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType]);
+  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType, fetchQuestionsList]);
 
   const handleLoadMore = () => {
     fetchQuestionsList(currentPage + 1, true);
