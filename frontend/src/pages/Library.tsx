@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api } from "../api";
+import { api, API_BASE_URL } from "../api";
 import type { Question, Paper } from "../api";
 import { Upload, HelpCircle, FileText, Check, Filter, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 
@@ -651,6 +651,28 @@ export default function Library() {
                       <div key={idx} style={{ padding: "8px 12px", backgroundColor: "var(--bg-tertiary)", borderRadius: "4px", fontSize: "0.85rem" }}>
                         {opt}
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Extracted Diagram/Images */}
+                {selectedQuestion.images_list && selectedQuestion.images_list.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "16px" }}>
+                    {selectedQuestion.images_list.map((imgName, imgIdx) => (
+                      <img 
+                        key={imgIdx} 
+                        src={`${API_BASE_URL}/images/paper_${selectedQuestion.paper_id}/${imgName}`}
+                        alt={`Question ${selectedQuestion.question_number} Diagram ${imgIdx + 1}`}
+                        style={{ 
+                          maxWidth: "100%", 
+                          maxHeight: "200px", 
+                          objectFit: "contain",
+                          borderRadius: "4px",
+                          border: "1px solid var(--border-color)",
+                          backgroundColor: "rgba(255, 255, 255, 0.03)",
+                          padding: "6px"
+                        }} 
+                      />
                     ))}
                   </div>
                 )}
