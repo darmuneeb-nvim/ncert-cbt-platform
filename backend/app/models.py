@@ -51,10 +51,10 @@ class QuestionTag(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), unique=True, nullable=False)
-    subject = Column(String, nullable=True)
-    chapter = Column(String, nullable=True)
+    subject = Column(String, nullable=True, index=True)
+    chapter = Column(String, nullable=True, index=True)
     concept = Column(String, nullable=True)
-    difficulty = Column(String, nullable=True) # easy | medium | hard
+    difficulty = Column(String, nullable=True, index=True) # easy | medium | hard
     tag_source = Column(String, default="ai") # ai | manual
     confidence = Column(Float, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
