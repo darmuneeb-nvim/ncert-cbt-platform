@@ -400,31 +400,61 @@ def get_dummy_parsed_response(raw_text: str) -> Dict[str, Any]:
         
         # Extrapolate option contents (A, B, C, D)
         options = []
-        opt_matches = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([A-Da-d])\)|([A-Da-d])[\)\.])(?=\s+|$)', q_text, re.IGNORECASE))
-        if opt_matches:
-            is_match_question = any(kw in q_text.lower() for kw in ["match list", "list-i", "list - i", "list-ii", "list - ii", "match the following"])
+        combination_parsed = False
+        q_type = "MCQ"
+        
+        # Check if the question contains the special combination pattern:
+        # A list of pairs followed by "Choose the correct answer..." and then combination options
+        match_pattern = r"(Choose the correct answer from the options given below|Choose the correct option)"
+        match_search = re.search(match_pattern, q_text, re.IGNORECASE)
+        if match_search:
+            split_idx = match_search.start()
+            stem_part = q_text[:split_idx].strip()
+            choose_line = match_search.group(0)
+            options_part = q_text[split_idx + len(choose_line):].strip()
             
-            # If Match Column layout and we matched both columns and choices, only grab final choices
-            if is_match_question and len(opt_matches) > 4:
-                option_matches = opt_matches[-4:]
-            else:
-                option_matches = opt_matches
+            # The options in options_part can be separated by (1)/(2)/(3)/(4) or (A)/(B)/(C)/(D) or similar
+            opt_delims = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([1-4A-Da-d])\)|([1-4A-Da-d])[\)\.])(?=\s+|$)', options_part, re.IGNORECASE))
+            if len(opt_delims) >= 4:
+                for j, delim in enumerate(opt_delims[:4]):
+                    o_start = delim.start()
+                    o_end = opt_delims[j+1].start() if j + 1 < len(opt_delims) else len(options_part)
+                    opt_str = options_part[o_start:o_end].strip()
+                    # Clean the option prefix, e.g. (1) A-I... -> A-I... or (A) A-I... -> A-I...
+                    opt_str = re.sub(r'^\s*(?:\([1-4A-Da-d]\)|[1-4A-Da-d][\)\.])\s*', '', opt_str)
+                    options.append(clean_junk_advertisement_lines(opt_str))
+                q_text = stem_part + "\n" + choose_line
+                combination_parsed = True
+                q_type = "MATCH"
 
-            for j, opt_match in enumerate(option_matches):
-                o_start = opt_match.start()
-                o_end = option_matches[j+1].start() if j + 1 < len(option_matches) else len(q_text)
-                opt_str = q_text[o_start:o_end].strip()
-                # Clean prefix parentheses standardizing e.g., (A) Genus -> A) Genus
-                opt_str = re.sub(r'^\(([A-Da-d])\)\s*', r'\1) ', opt_str)
-                options.append(clean_junk_advertisement_lines(opt_str))
+        if not combination_parsed:
+            opt_matches = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([A-Da-d])\)|([A-Da-d])[\)\.])(?=\s+|$)', q_text, re.IGNORECASE))
+            if opt_matches:
+                is_match_question = any(kw in q_text.lower() for kw in ["match list", "list-i", "list - i", "list-ii", "list - ii", "match the following"])
                 
-            # Clean original question block of option texts (going up to first option choice match)
-            q_text = q_text[:option_matches[0].start()].strip()
+                # If Match Column layout and we matched both columns and choices, only grab final choices
+                if is_match_question and len(opt_matches) > 4:
+                    option_matches = opt_matches[-4:]
+                else:
+                    option_matches = opt_matches
+
+                for j, opt_match in enumerate(option_matches):
+                    o_start = opt_match.start()
+                    o_end = option_matches[j+1].start() if j + 1 < len(option_matches) else len(q_text)
+                    opt_str = q_text[o_start:o_end].strip()
+                    # Clean prefix parentheses standardizing e.g., (A) Genus -> A) Genus
+                    opt_str = re.sub(r'^\(([A-Da-d])\)\s*', r'\1) ', opt_str)
+                    options.append(clean_junk_advertisement_lines(opt_str))
+                    
+                # Clean original question block of option texts (going up to first option choice match)
+                q_text = q_text[:option_matches[0].start()].strip()
+            else:
+                q_type = "NUMERICAL"
             
         questions.append({
             "question_number": q_num,
             "raw_content": q_text or f"Question details {q_num}",
-            "question_type": "MCQ" if options else "NUMERICAL",
+            "question_type": q_type if combination_parsed else ("MCQ" if options else "NUMERICAL"),
             "options": options if options else None,
             "correct_answer": None,
             "explanation": None
