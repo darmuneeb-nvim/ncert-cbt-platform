@@ -28,18 +28,16 @@ fi
 echo "Starting backend..."
 cd "$PROJECT_ROOT/backend"
 source "$VENV_PATH/bin/activate"
-nohup python run.py > "$PROJECT_ROOT/logs/backend.log" 2>&1 &
+setsid python run.py > "$PROJECT_ROOT/logs/backend.log" 2>&1 &
 BACKEND_PID=$!
-disown $BACKEND_PID
 deactivate
 echo $BACKEND_PID > "$PROJECT_ROOT/logs/backend.pid"
 
 # 2. Start Frontend
 echo "Starting frontend..."
 cd "$PROJECT_ROOT/frontend"
-nohup npm run dev > "$PROJECT_ROOT/logs/frontend.log" 2>&1 &
+setsid npm run dev > "$PROJECT_ROOT/logs/frontend.log" 2>&1 &
 FRONTEND_PID=$!
-disown $FRONTEND_PID
 echo $FRONTEND_PID > "$PROJECT_ROOT/logs/frontend.pid"
 
 echo "Backend PID: $BACKEND_PID"
