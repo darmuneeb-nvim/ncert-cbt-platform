@@ -354,10 +354,16 @@ def generate_test(req: TestGenerateRequest, db: Session = Depends(get_db)):
             query = db.query(Question).join(QuestionTag).filter(QuestionTag.subject == subj)
             
             # Apply common filters
-            if req.chapter:
+            if req.chapters:
+                query = query.filter(QuestionTag.chapter.in_(req.chapters))
+            elif req.chapter:
                 query = query.filter(QuestionTag.chapter == req.chapter)
+                
             if req.concept:
                 query = query.filter(QuestionTag.concept == req.concept)
+                
+            if req.paper_ids:
+                query = query.filter(Question.paper_id.in_(req.paper_ids))
                 
             # Apply difficulties multiselect or single select
             if req.difficulties:
@@ -378,10 +384,16 @@ def generate_test(req: TestGenerateRequest, db: Session = Depends(get_db)):
         elif req.subject:
             query = query.filter(QuestionTag.subject == req.subject)
             
-        if req.chapter:
+        if req.chapters:
+            query = query.filter(QuestionTag.chapter.in_(req.chapters))
+        elif req.chapter:
             query = query.filter(QuestionTag.chapter == req.chapter)
+            
         if req.concept:
             query = query.filter(QuestionTag.concept == req.concept)
+            
+        if req.paper_ids:
+            query = query.filter(Question.paper_id.in_(req.paper_ids))
             
         # Apply difficulties multiselect or single select
         if req.difficulties:
