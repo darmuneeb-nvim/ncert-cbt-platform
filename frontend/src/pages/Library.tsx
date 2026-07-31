@@ -299,7 +299,7 @@ export default function Library() {
           fetchQuestionsList();
         })
         .catch((err) => alert(err.message));
-    } catch (e) {
+    } catch {
       alert("Invalid JSON format. Check template format: {\"1\": \"A\", \"2\": \"B\"}");
     }
   };
