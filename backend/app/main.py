@@ -683,6 +683,7 @@ def get_attempts_history(db: Session = Depends(get_db)):
             submissions_details.append({
                 "id": a.id,
                 "question_id": q.id,
+                "paper_id": q.paper_id,
                 "question_number": q.question_number,
                 "raw_content": q.raw_content,
                 "question_type": q.question_type,
@@ -692,7 +693,8 @@ def get_attempts_history(db: Session = Depends(get_db)):
                 "selected_answer": a.selected_answer,
                 "result": a.result,
                 "time_spent": a.time_spent,
-                "subject": subject
+                "subject": subject,
+                "images_list": q.images_list
             })
             
         history.append({
