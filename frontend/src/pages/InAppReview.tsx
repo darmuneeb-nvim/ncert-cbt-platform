@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, API_BASE_URL } from "../api"; from "../api";
 import type { Question, QuizSessionAttempt } from "../api";
 import { 
   Layers, 
@@ -214,6 +214,28 @@ export default function InAppReview() {
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
                 {JSON.parse(currentCard.options).map((o: string, i: number) => (
                   <div key={i} style={{ padding: "6px 10px", backgroundColor: "var(--bg-tertiary)", borderRadius: "4px" }}>{o}</div>
+                ))}
+              </div>
+            )}
+
+            {/* Extracted Diagram/Images */}
+            {currentCard.images_list && currentCard.images_list.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "12px" }}>
+                {currentCard.images_list.map((imgName, imgIdx) => (
+                  <img 
+                    key={imgIdx} 
+                    src={`${API_BASE_URL}/images/paper_${currentCard.paper_id}/${imgName}`}
+                    alt={`Question ${currentCard.question_number} Diagram ${imgIdx + 1}`}
+                    style={{ 
+                      maxWidth: "100%", 
+                      maxHeight: "150px", 
+                      objectFit: "contain",
+                      borderRadius: "4px",
+                      border: "1px solid var(--border-color)",
+                      backgroundColor: "rgba(255, 255, 255, 0.03)",
+                      padding: "4px"
+                    }} 
+                  />
                 ))}
               </div>
             )}
@@ -552,6 +574,28 @@ export default function InAppReview() {
               </div>
             )}
 
+            {/* Extracted Diagram/Images */}
+            {selectedSkipped.images_list && selectedSkipped.images_list.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "16px" }}>
+                {selectedSkipped.images_list.map((imgName, imgIdx) => (
+                  <img 
+                    key={imgIdx} 
+                    src={`${API_BASE_URL}/images/paper_${selectedSkipped.paper_id}/${imgName}`}
+                    alt={`Question ${selectedSkipped.question_number} Diagram ${imgIdx + 1}`}
+                    style={{ 
+                      maxWidth: "100%", 
+                      maxHeight: "220px", 
+                      objectFit: "contain",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border-color)",
+                      backgroundColor: "rgba(255, 255, 255, 0.03)",
+                      padding: "6px"
+                    }} 
+                  />
+                ))}
+              </div>
+            )}
+
             {/* Modal Actions */}
             {!isSolveSubmitted && (
               <div style={{ display: "flex", gap: "12px", width: "100%", marginTop: "8px" }}>
@@ -753,7 +797,29 @@ export default function InAppReview() {
                       </div>
                     )}
 
-                    {/* Step by step solutions */}
+                    {/* Extracted Diagram/Images */}
+                  {sub.images_list && sub.images_list.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "12px" }}>
+                      {sub.images_list.map((imgName, imgIdx) => (
+                        <img 
+                          key={imgIdx} 
+                          src={`${API_BASE_URL}/images/paper_${sub.paper_id}/${imgName}`}
+                          alt={`Question ${sub.question_number} Diagram ${imgIdx + 1}`}
+                          style={{ 
+                            maxWidth: "100%", 
+                            maxHeight: "150px", 
+                            objectFit: "contain",
+                            borderRadius: "4px",
+                            border: "1px solid var(--border-color)",
+                            backgroundColor: "rgba(255, 255, 255, 0.03)",
+                            padding: "4px"
+                          }} 
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Step by step solutions */}
                     <div style={{ 
                       marginTop: "8px", borderTop: "1px solid var(--border-color)", paddingTop: "12px",
                       display: "flex", flexDirection: "column", gap: "6px" 
