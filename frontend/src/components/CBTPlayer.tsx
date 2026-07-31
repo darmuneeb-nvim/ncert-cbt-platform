@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { api } from "../api";
+import { api, API_BASE_URL } from "../api";
 import type { Question, TestSubmissionResult } from "../api";
 import { Clock, Award, AlertTriangle, Eye, Zap } from "lucide-react";
 import confetti from "canvas-confetti";
@@ -329,6 +329,28 @@ export default function CBTPlayer() {
         <div style={{ fontSize: "1.05rem", whiteSpace: "pre-wrap", lineHeight: "1.6", fontWeight: "500" }}>
           {q.raw_content}
         </div>
+
+        {/* Extracted Diagram/Images */}
+        {q.images_list && q.images_list.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", margin: "10px 0" }}>
+            {q.images_list.map((imgName, imgIdx) => (
+              <img 
+                key={imgIdx} 
+                src={`${API_BASE_URL}/images/paper_${q.paper_id}/${imgName}`}
+                alt={`Question ${q.question_number} Diagram ${imgIdx + 1}`}
+                style={{ 
+                  maxWidth: "100%", 
+                  maxHeight: "350px", 
+                  objectFit: "contain",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border-color)",
+                  backgroundColor: "rgba(255, 255, 255, 0.03)",
+                  padding: "8px"
+                }} 
+              />
+            ))}
+          </div>
+        )}
 
         {/* Dynamic Question Forms */}
         {isMCQ && q.options && (
