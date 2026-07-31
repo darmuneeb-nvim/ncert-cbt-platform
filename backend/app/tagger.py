@@ -69,7 +69,7 @@ def run_batch_tagging(db: Session, batch_size: int = 20) -> int:
 
     import google.generativeai as genai
     genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel("gemini-3.5-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = f"""
 You are an AI tagging engine for JEE/NEET questions.
