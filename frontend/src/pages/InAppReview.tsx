@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, API_BASE_URL } from "../api"; from "../api";
+import { api, API_BASE_URL } from "../api";
 import type { Question, QuizSessionAttempt } from "../api";
 import { 
   Layers, 
