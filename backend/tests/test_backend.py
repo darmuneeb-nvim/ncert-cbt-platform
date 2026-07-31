@@ -107,5 +107,40 @@ class TestCBTPlatform(unittest.TestCase):
         self.assertEqual(len(fetched_q.attempts), 1)
         self.assertEqual(fetched_q.attempts[0].result, "correct")
 
+    def test_match_following_combination_parser(self):
+        """Verifies that Match-the-following style questions with combination choices are parsed correctly."""
+        raw_text = """
+        1. Match the following columns:
+        A. Axile – Althaea
+        B. Marginal – Pea
+        C. Parietal – Mustard
+        D. Free central – Primrose
+        E. Parietal – Argemone
+        Choose the correct answer from the options given below:
+        (1) A-II, B-I, C-V, D-III, E-IV
+        (2) A-I, B-II, C-III, D-IV, E-V
+        (3) A-III, B-IV, C-I, D-II, E-V
+        (4) A-V, B-III, C-IV, D-I, E-II
+        """
+        parsed = get_dummy_parsed_response(raw_text)
+        questions = parsed.get("questions", [])
+        
+        self.assertEqual(len(questions), 1)
+        q = questions[0]
+        self.assertEqual(q["question_number"], 1)
+        self.assertEqual(q["question_type"], "MATCH")
+        
+        # Options list should have exactly 4 entries (A-D combination answers)
+        self.assertEqual(len(q["options"]), 4)
+        self.assertEqual(q["options"][0], "A-II, B-I, C-V, D-III, E-IV")
+        self.assertEqual(q["options"][1], "A-I, B-II, C-III, D-IV, E-V")
+        self.assertEqual(q["options"][2], "A-III, B-IV, C-I, D-II, E-V")
+        self.assertEqual(q["options"][3], "A-V, B-III, C-IV, D-I, E-II")
+        
+        # Stem contains the full A-E pair list as plain text
+        self.assertIn("A. Axile", q["raw_content"])
+        self.assertIn("E. Parietal – Argemone", q["raw_content"])
+        self.assertIn("Choose the correct answer from the options given below", q["raw_content"])
+
 if __name__ == "__main__":
     unittest.main()
