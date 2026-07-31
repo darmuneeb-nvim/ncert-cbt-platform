@@ -19,7 +19,7 @@ class Question(Base):
     __tablename__ = "questions"
 
     id = Column(Integer, primary_key=True, index=True)
-    paper_id = Column(Integer, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False, index=True)
     question_number = Column(Integer, nullable=False)
     raw_content = Column(String, nullable=False)
     question_type = Column(String, nullable=False) # MCQ | AR | MATCH | NUMERICAL
