@@ -217,6 +217,7 @@ def list_questions(
     difficulty: Optional[str] = None,
     tagging_status: Optional[str] = None,
     question_type: Optional[str] = None,
+    paper_id: Optional[int] = None,
     page: int = 1,
     limit: int = 25,
     db: Session = Depends(get_db)
@@ -233,6 +234,8 @@ def list_questions(
         query = query.filter(Question.tagging_status == tagging_status)
     if question_type:
         query = query.filter(Question.question_type == question_type)
+    if paper_id:
+        query = query.filter(Question.paper_id == paper_id)
 
     total = query.count()
     offset = (page - 1) * limit
