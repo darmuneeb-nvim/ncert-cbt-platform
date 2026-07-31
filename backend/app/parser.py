@@ -242,9 +242,12 @@ For each question, extract:
 - question_number: The integer index of the question (e.g., 1, 2, 51). Pay special attention to the number written next to the question statement. Do NOT assign everything to 1.
 - raw_content: The text of the question (use markdown for clean formatting, keep chemical formulas/math equations formatted nicely).
 - question_type: Must be one of: "MCQ" | "AR" | "MATCH" | "NUMERICAL".
-- options: For MCQ, a list of 4 options. 
-  * IMPORTANT: Do not include option letters (A, B, C, D) or surrounding brackets in the final elements of the options array. Clean them off so they only contain the text of the options (e.g., return 'Genus', not '(A) Genus' or 'A) Genus'). This prevents double option label rendering in the player UI.
-  * MATCH type questions columns (such as List-I and List-II lists) must remain inside the `raw_content`. The `options` list must only contain the final choice combinations (e.g. A-I, B-II, C-III, D-IV). Never treat column entries as separate options.
+- options: For MCQ and MATCH/combination questions, a list of 4 options. 
+  * IMPORTANT: Do not include option letters (A, B, C, D) or numbers (1, 2, 3, 4) or surrounding brackets in the final elements of the options array. Clean them off so they only contain the text of the options (e.g., return 'Genus', not '(A) Genus' or 'A) Genus'). This prevents double option label rendering in the player UI.
+  * MATCH type and combination questions: For questions containing a list of pairs/columns (e.g., List-I/List-II, or items A, B, C, D, E matched with I, II, III, IV, V), followed by a phrase like "Choose the correct answer from the options given below:" (or similar), and then 4 multiple-choice options showing combinations (e.g., "(1) A-II, B-I, C-V, D-III, E-IV"):
+    1. The entire list of pairs/columns AND the "Choose the correct answer..." line MUST be included in the `raw_content` as plain text/markdown.
+    2. The `options` list MUST ONLY contain the final 4 selectable combination choices, with option labels (such as (1), (2), (3), (4) or (A), (B), (C), (D)) stripped out.
+    3. Never treat individual pair items (e.g., "E. Parietal – Argemone") as options, and never merge them into the final combination options. They belong strictly in the `raw_content`.
 - correct_answer: The correct option character (A, B, C, D) if found in this text block. Otherwise null.
 - explanation: Any embedded solution explanation if found in this text block. Otherwise null.
 - images: A list of string filenames (e.g. ["page_1_img_0.png"]) matched from the provided image payload manifest if the question has an associated diagram. Otherwise null.
