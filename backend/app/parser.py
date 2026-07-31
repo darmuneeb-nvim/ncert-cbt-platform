@@ -36,14 +36,45 @@ def clean_junk_advertisement_lines(text: str) -> str:
     res = "\n".join(cleaned_lines).strip()
     return res
 
-def parse_pdf_to_questions(file_path: str) -> Dict[str, Any]:
+def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
     """
     Parses a PDF mock paper. Extracts page text (running OCR fallback if needed),
     locates the answer key by querying the final pages, and parses questions
     page-group by page-group to avoid token size limits and number extraction errors.
     """
-    logger.info(f"Beginning PDF extraction pipeline for: {file_path}")
+    logger.info(f"Beginning PDF extraction pipeline for: {file_path} (Paper ID: {paper_id})")
     doc = fitz.open(file_path)
+    
+    # Extract images and save them locally
+    images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "images", f"paper_{paper_id}")
+    os.makedirs(images_dir, exist_ok=True)
+    
+    extracted_images_count = 0
+    for page_idx in range(len(doc)):
+        page = doc[page_idx]
+        try:
+            image_list = page.get_images(full=True)
+            for img_idx, img in enumerate(image_list):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                
+                # Heuristic filters: ignore tiny decorative elements
+                width = base_image.get("width", 0)
+                height = base_image.get("height", 0)
+                if width < 50 or height < 50:
+                    continue
+                    
+                image_ext = base_image["ext"]
+                filename = f"page_{page_idx + 1}_img_{img_idx}.{image_ext}"
+                filepath = os.path.join(images_dir, filename)
+                with open(filepath, "wb") as f:
+                    f.write(image_bytes)
+                extracted_images_count += 1
+        except Exception as e:
+            logger.error(f"Error extracting images from page {page_idx + 1}: {e}")
+            
+    logger.info(f"Extracted {extracted_images_count} images from PDF.")
     pages = []
     
     for page in doc:
