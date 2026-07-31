@@ -25,6 +25,7 @@ export interface Question {
   created_at: string;
   tags?: QuestionTag;
   last_attempt_time?: number | null;
+  images_list?: string[] | null;
 }
 
 export interface Paper {
