@@ -87,6 +87,7 @@ export default function Library() {
   const [filterDifficulty, setFilterDifficulty] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType, setFilterType] = useState("");
+  const [filterPaperId, setFilterPaperId] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
   // Bulk actions selection states
@@ -121,6 +122,7 @@ export default function Library() {
       difficulty: filterDifficulty || undefined,
       tagging_status: filterStatus || undefined,
       question_type: filterType || undefined,
+      paper_id: filterPaperId ? Number(filterPaperId) : undefined,
       page: pageToFetch,
       limit: 15
     }).then((data) => {
@@ -136,7 +138,7 @@ export default function Library() {
       console.error(err);
       setLoadingQuestions(false);
     });
-  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType]);
+  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType, filterPaperId]);
 
   useEffect(() => {
     refreshPapers();
@@ -145,7 +147,7 @@ export default function Library() {
   useEffect(() => {
     fetchQuestionsList(1, false);
     setSelectedIds([]); // reset selection when filters change
-  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType, fetchQuestionsList]);
+  }, [filterSubject, filterChapter, filterDifficulty, filterStatus, filterType, filterPaperId, fetchQuestionsList]);
 
   const handleLoadMore = () => {
     fetchQuestionsList(currentPage + 1, true);
@@ -467,6 +469,13 @@ export default function Library() {
               <option value="AR">Assertion-Reason</option>
               <option value="MATCH">Match the Columns</option>
               <option value="NUMERICAL">Numerical / Integer</option>
+            </select>
+
+            <select className="form-select" style={{ padding: "6px 12px", fontSize: "0.85rem", maxWidth: "180px" }} value={filterPaperId} onChange={(e) => { setFilterPaperId(e.target.value); setCurrentPage(1); }}>
+              <option value="">All Source Papers</option>
+              {papers.map((p) => (
+                <option key={p.id} value={p.id}>{p.filename}</option>
+              ))}
             </select>
 
             <label style={{ 
