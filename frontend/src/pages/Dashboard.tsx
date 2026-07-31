@@ -35,6 +35,20 @@ export default function Dashboard() {
 
   // 1-Minute Timer States for Dashboard CBT Review attempts
   const [cbtTimeLeft, setCbtTimeLeft] = useState(60);
+  const [isCbtTimerActive, setIsCbtTimerActive] = useState(false);
+
+  useEffect(() => {
+    api.getDashboardStats()
+      .then((data) => {
+        setStats(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load dashboard statistics.");
+        setLoading(false);
+      });
+  }, []);
+
   const handleCbtSubmitAuto = useCallback(() => {
     if (activeReviewIndex === null || questionsList.length === 0) return;
     const activeQuestion = questionsList[activeReviewIndex];
