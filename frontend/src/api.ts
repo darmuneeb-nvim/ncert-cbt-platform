@@ -208,11 +208,13 @@ export const api = {
     subject?: string;
     subjects?: string[];
     chapter?: string;
+    chapters?: string[];
     concept?: string;
     difficulty?: string;
     difficulties?: string[];
     limit?: number;
     subject_limits?: Record<string, number>;
+    paper_ids?: number[];
   }): Promise<Question[]> {
     const res = await fetch(`${API_BASE_URL}/tests/generate`, {
       method: "POST",
