@@ -89,12 +89,14 @@ class TestGenerateRequest(BaseModel):
     subject: Optional[str] = None
     subjects: Optional[List[str]] = None
     chapter: Optional[str] = None
+    chapters: Optional[List[str]] = None
     concept: Optional[str] = None
     difficulty: Optional[str] = None
     difficulties: Optional[List[str]] = None
     limit: int = 30
     subject_limits: Optional[Dict[str, int]] = None
     mode: str = "practice"
+    paper_ids: Optional[List[int]] = None
 
 class TestSubmissionItem(BaseModel):
     question_id: int
