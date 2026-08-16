@@ -99,15 +99,50 @@ def clean_option_text(opt: str) -> str:
 
 def parse_answer_key_grid(text: str) -> Dict[str, str]:
     """
-    Parses horizontal or tabular answer key grids where question numbers and
-    answer options are arranged in alternating rows or columns (e.g., NEET/JEE style:
-    Row 1: 1 2 3 4 5 ... 17
-    Row 2: a b b d a ... d).
+    Parses answer key grids where question numbers and answer options are arranged in:
+    - Vertical column blocks (e.g. numbers 1..17 followed by answers d..a)
+    - Horizontal alternating rows
+    - Standard inline key formats (e.g. 1. a, 1 - B, Q1. (C), etc.)
     """
     key: Dict[str, str] = {}
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+    # 1. Check vertical column chunks (sequence of consecutive numbers followed by equal length of single letters/digits)
+    i = 0
+    while i < len(lines):
+        if lines[i].isdigit():
+            num_seq = []
+            cur_i = i
+            while cur_i < len(lines) and lines[cur_i].isdigit():
+                num_val = int(lines[cur_i])
+                if not num_seq or num_val == num_seq[-1] + 1:
+                    num_seq.append(num_val)
+                    cur_i += 1
+                else:
+                    break
+            
+            if len(num_seq) >= 2:
+                ans_seq = []
+                ans_i = cur_i
+                while ans_i < len(lines) and len(ans_seq) < len(num_seq):
+                    val = lines[ans_i].lower()
+                    if val in ["a", "b", "c", "d", "1", "2", "3", "4"]:
+                        ans_seq.append(val)
+                        ans_i += 1
+                    else:
+                        break
+                
+                if len(ans_seq) == len(num_seq):
+                    for n, a in zip(num_seq, ans_seq):
+                        v = a.upper()
+                        if v in ["1", "2", "3", "4"]:
+                            v = chr(ord("A") + int(v) - 1)
+                        key[str(n)] = v
+                    i = ans_i
+                    continue
+        i += 1
     
-    # 1. Check alternating lines: numbers row followed by answers row
+    # 2. Check alternating lines: numbers row followed by answers row
     for i in range(len(lines) - 1):
         l1 = lines[i]
         l2 = lines[i + 1]
@@ -122,9 +157,10 @@ def parse_answer_key_grid(text: str) -> Dict[str, str]:
                     val = a.upper()
                     if val in ['1', '2', '3', '4']:
                         val = chr(ord('A') + int(val) - 1)
-                    key[str(n)] = val
+                    if str(n) not in key:
+                        key[str(n)] = val
 
-    # 2. Check standard inline/regex patterns (e.g. 1-A, 1. B, Q1 (C))
+    # 3. Check standard inline/regex patterns (e.g. 1-A, 1. B, Q1 (C))
     try:
         key_pattern = r'(?:Q|Question|Q\.)?\s*(\d+)\s*[\.\-\:\s\n]+\s*(?:\(([A-Da-d1-4])\)|([A-Da-d1-4]))(?=\s|$|\n)'
         regex_matches = re.finditer(key_pattern, text)
