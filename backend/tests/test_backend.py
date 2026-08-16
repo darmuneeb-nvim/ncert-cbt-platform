@@ -142,5 +142,103 @@ class TestCBTPlatform(unittest.TestCase):
         self.assertIn("E. Parietal – Argemone", q["raw_content"])
         self.assertIn("Choose the correct answer from the options given below", q["raw_content"])
 
+    def test_parse_answer_key_grid(self):
+        """Verifies parsing horizontal/tabular answer key grids from NEET/JEE papers."""
+        from app.parser import parse_answer_key_grid
+        
+        # Test 1: 34 questions Ecosystem sample
+        sample_eco = """
+        1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
+        a b b d a c a d d d c c b a d a d
+        18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34
+        a d b c b b a d d d d b b d d d a
+        Answer Key
+        """
+        key_eco = parse_answer_key_grid(sample_eco)
+        self.assertEqual(len(key_eco), 34)
+        self.assertEqual(key_eco["1"], "A")
+        self.assertEqual(key_eco["2"], "B")
+        self.assertEqual(key_eco["6"], "C")
+        self.assertEqual(key_eco["10"], "D")
+        self.assertEqual(key_eco["34"], "A")
+
+        # Test 2: 16 questions Physics sample
+        sample_phy = """
+        Electromagnetic Induction 3
+        1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+        c a d b d c d d d b d d d d c b
+        Answer Key
+        """
+        key_phy = parse_answer_key_grid(sample_phy)
+        self.assertEqual(len(key_phy), 16)
+        self.assertEqual(key_phy["1"], "C")
+        self.assertEqual(key_phy["2"], "A")
+        self.assertEqual(key_phy["3"], "D")
+        self.assertEqual(key_phy["16"], "B")
+
+    def test_cbt_test_generation_excludes_unanswered_and_errored_questions(self):
+        """Verifies that questions without correct_answer or flagged as needs_review/error are excluded from CBT generation."""
+        from app.main import generate_test
+        from app.schemas import TestGenerateRequest
+
+        paper = Paper(filename="mock.pdf", file_path="/mock.pdf", answer_key_status="matched")
+        self.db.add(paper)
+        self.db.commit()
+
+        # Valid Question
+        q_valid = Question(
+            paper_id=paper.id,
+            question_number=1,
+            raw_content="Valid question?",
+            question_type="MCQ",
+            options=json.dumps(["Opt1", "Opt2", "Opt3", "Opt4"]),
+            correct_answer="A",
+            tagging_status="fully_tagged"
+        )
+        self.db.add(q_valid)
+        self.db.flush()
+        tag1 = QuestionTag(question_id=q_valid.id, subject="Biology", difficulty="easy")
+        self.db.add(tag1)
+
+        # Unanswered Question (should be excluded)
+        q_no_ans = Question(
+            paper_id=paper.id,
+            question_number=2,
+            raw_content="Question with no answer?",
+            question_type="MCQ",
+            options=json.dumps(["Opt1", "Opt2", "Opt3", "Opt4"]),
+            correct_answer=None,
+            tagging_status="needs_review"
+        )
+        self.db.add(q_no_ans)
+        self.db.flush()
+        tag2 = QuestionTag(question_id=q_no_ans.id, subject="Biology", difficulty="easy")
+        self.db.add(tag2)
+
+        # Errored / Needs Review Question (should be excluded)
+        q_error = Question(
+            paper_id=paper.id,
+            question_number=3,
+            raw_content="Question with malformed options?",
+            question_type="MCQ",
+            options=json.dumps(["Only 1 option"]),
+            correct_answer="B",
+            tagging_status="needs_review"
+        )
+        self.db.add(q_error)
+        self.db.flush()
+        tag3 = QuestionTag(question_id=q_error.id, subject="Biology", difficulty="easy")
+        self.db.add(tag3)
+        self.db.commit()
+
+        # Generate test
+        req = TestGenerateRequest(subject="Biology", limit=10)
+        res = generate_test(req, self.db)
+
+        # Only the valid question should be returned
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].id, q_valid.id)
+
 if __name__ == "__main__":
     unittest.main()
+
