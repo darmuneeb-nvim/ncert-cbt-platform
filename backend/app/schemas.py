@@ -158,3 +158,28 @@ class BulkTagRequest(BaseModel):
 
 class BulkDeleteRequest(BaseModel):
     question_ids: List[int]
+
+# --- Structured AI Extraction Schemas ---
+class ExtractedQuestion(BaseModel):
+    question_number: int = Field(description="The integer index of the question (e.g., 1, 2, 51)")
+    raw_content: str = Field(description="The text of the question in markdown format with equations in LaTeX")
+    question_type: str = Field(default="MCQ", description="One of: 'MCQ', 'AR', 'MATCH', 'NUMERICAL'")
+    options: Optional[List[str]] = Field(
+        default=None, 
+        description="For MCQ, exactly 4 option text strings with option letter/number prefixes removed"
+    )
+    correct_answer: Optional[str] = Field(default=None, description="The correct answer option (e.g. A, B, C, D) if embedded or detected")
+    explanation: Optional[str] = Field(default=None, description="Solution or explanation text if found")
+    subject: Optional[str] = Field(default=None, description="Subject: 'Physics', 'Chemistry', 'Biology', or 'Mathematics'")
+    chapter: Optional[str] = Field(default=None, description="Chapter or topic title (e.g., 'Ecosystem', 'Electromagnetic Induction')")
+    difficulty: Optional[str] = Field(default=None, description="'easy', 'medium', or 'hard'")
+    confidence: Optional[float] = Field(default=1.0, description="Extraction confidence score from 0.0 to 1.0")
+    images: Optional[List[str]] = Field(default=None, description="Filenames of matched diagram payloads if applicable")
+
+class PaperExtractionResult(BaseModel):
+    questions: List[ExtractedQuestion] = Field(default_factory=list)
+    answer_key_mapping: Optional[Dict[str, str]] = Field(
+        default=None, 
+        description="Mapping of question number to answer (e.g., {'1': 'A', '2': 'B'}) if an answer key was detected"
+    )
+
