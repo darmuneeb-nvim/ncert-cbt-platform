@@ -3,6 +3,7 @@ import { api, API_BASE_URL } from "../api";
 import type { Question, Paper } from "../api";
 import { Upload, HelpCircle, FileText, Check, Filter, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 import { NCERT_TAXONOMY } from "../taxonomy";
+import FormattedQuestion from "../components/FormattedQuestion";
 
 export default function Library() {
   // Papers state
