@@ -34,8 +34,8 @@ def run_batch_tagging(db: Session, batch_size: int = 20) -> int:
     and updates the database with the results.
     Returns the count of successfully tagged questions.
     """
-    if not settings.gemini_api_key:
-        logger.warning("GEMINI_API_KEY is not set. Skipping AI tagging.")
+    if not settings.gemini_api_key or not settings.gemini_api_key.startswith("AIza"):
+        logger.warning("GEMINI_API_KEY is not set or invalid. Skipping AI tagging.")
         return 0
 
     # Load taxonomy
