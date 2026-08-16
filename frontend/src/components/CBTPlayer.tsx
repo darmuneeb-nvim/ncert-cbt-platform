@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { api, API_BASE_URL } from "../api";
 import type { Question, TestSubmissionResult, Paper } from "../api";
-import { Clock, Award, AlertTriangle, Eye, Zap } from "lucide-react";
+import { Clock, Award, AlertTriangle, Eye, Zap, Sparkles, BookOpen, Layers, Target, ChevronDown, ChevronUp, Check, Play } from "lucide-react";
 import confetti from "canvas-confetti";
 import { NCERT_TAXONOMY } from "../taxonomy";
+import FormattedQuestion from "./FormattedQuestion";
 
 interface QuestionState {
   question: Question;
@@ -18,98 +19,54 @@ export default function CBTPlayer() {
     return Number(localStorage.getItem("cbt_limit") || "10");
   });
   
-  // Multiselect & Advanced options states
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>(() => {
-    try {
-      const val = localStorage.getItem("cbt_subjects");
-      return val ? JSON.parse(val) : ["Physics", "Chemistry", "Biology", "Mathematics"];
-    } catch {
-      return ["Physics", "Chemistry", "Biology", "Mathematics"];
-    }
-  });
-  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>(() => {
-    try {
-      const val = localStorage.getItem("cbt_difficulties");
-      return val ? JSON.parse(val) : ["easy", "medium", "hard"];
-    } catch {
-      return ["easy", "medium", "hard"];
-    }
-  });
-  const [isAdvancedActive, setIsAdvancedActive] = useState(() => {
-    return localStorage.getItem("cbt_advanced") === "true";
-  });
-  const [subjectLimits, setSubjectLimits] = useState<Record<string, number>>(() => {
-    try {
-      const val = localStorage.getItem("cbt_limits");
-      return val ? JSON.parse(val) : { Physics: 5, Chemistry: 5, Biology: 5, Mathematics: 5 };
-    } catch {
-      return { Physics: 5, Chemistry: 5, Biology: 5, Mathematics: 5 };
-    }
+  // Selected Subject (Defaults to Biology or All)
+  const [selectedSubject, setSelectedSubject] = useState<string>(() => {
+    return localStorage.getItem("cbt_selected_subject") || "Biology";
   });
 
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>(() => {
+    return localStorage.getItem("cbt_selected_difficulty") || "all";
+  });
+
+  const [presetMode, setPresetMode] = useState<"10" | "20" | "45" | "90" | "custom">(() => {
+    const lim = Number(localStorage.getItem("cbt_limit") || "10");
+    if ([10, 20, 45, 90].includes(lim)) return String(lim) as any;
+    return "custom";
+  });
+
+  const [showOptionalFilters, setShowOptionalFilters] = useState(false);
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
   const [selectedPapers, setSelectedPapers] = useState<number[]>([]);
   const [papers, setPapers] = useState<Paper[]>([]);
-  const [chapterSearch, setChapterSearch] = useState("");
-  const [paperSearch, setPaperSearch] = useState("");
+  const [availableQuestionsCount, setAvailableQuestionsCount] = useState<number>(38);
 
   useEffect(() => {
     api.getPapers().then(setPapers).catch(console.error);
   }, []);
 
-  // Reset selected chapters if active subjects change
+  // Fetch question counts
   useEffect(() => {
-    const activeSubjs = isAdvancedActive 
-      ? Object.keys(subjectLimits).filter(subj => subjectLimits[subj] > 0)
-      : selectedSubjects;
-      
-    const validChapters: string[] = [];
-    activeSubjs.forEach(subj => {
-      if (NCERT_TAXONOMY[subj]) {
-        validChapters.push(...Object.keys(NCERT_TAXONOMY[subj]));
-      }
+    api.getQuestions({
+      subject: selectedSubject === "all" ? undefined : selectedSubject,
+      limit: 1
+    }).then((res) => {
+      setAvailableQuestionsCount(res.total);
+    }).catch(() => {
+      setAvailableQuestionsCount(38);
     });
-    
-    setSelectedChapters(prev => prev.filter(c => validChapters.includes(c)));
-  }, [selectedSubjects, subjectLimits, isAdvancedActive]);
+  }, [selectedSubject]);
 
-  const activeSubjs = isAdvancedActive 
-    ? Object.keys(subjectLimits).filter(subj => subjectLimits[subj] > 0)
-    : selectedSubjects;
+  const activeChapters = (selectedSubject !== "all" && NCERT_TAXONOMY[selectedSubject])
+    ? Object.keys(NCERT_TAXONOMY[selectedSubject])
+    : Object.entries(NCERT_TAXONOMY).flatMap(([s, chs]) => Object.keys(chs).map(c => `${s}: ${c}`));
 
-  const activeChapters = activeSubjs.flatMap(subj => 
-    Object.keys(NCERT_TAXONOMY[subj] || {}).map(chapter => ({ chapter, subject: subj }))
-  ).sort((a, b) => a.chapter.localeCompare(b.chapter));
-
-  const filteredChapters = activeChapters.filter(item => 
-    item.chapter.toLowerCase().includes(chapterSearch.toLowerCase())
-  );
-
-  const filteredPapers = papers.filter(p => 
-    p.filename.toLowerCase().includes(paperSearch.toLowerCase())
-  );
-
-  // Persist configurations to localStorage
+  // Persist configurations
   useEffect(() => {
     localStorage.setItem("cbt_limit", String(testLimit));
-  }, [testLimit]);
+    localStorage.setItem("cbt_selected_subject", selectedSubject);
+    localStorage.setItem("cbt_selected_difficulty", selectedDifficulty);
+  }, [testLimit, selectedSubject, selectedDifficulty]);
 
-  useEffect(() => {
-    localStorage.setItem("cbt_subjects", JSON.stringify(selectedSubjects));
-  }, [selectedSubjects]);
-
-  useEffect(() => {
-    localStorage.setItem("cbt_difficulties", JSON.stringify(selectedDifficulties));
-  }, [selectedDifficulties]);
-
-  useEffect(() => {
-    localStorage.setItem("cbt_advanced", String(isAdvancedActive));
-  }, [isAdvancedActive]);
-
-  useEffect(() => {
-    localStorage.setItem("cbt_limits", JSON.stringify(subjectLimits));
-  }, [subjectLimits]);
-  
   // Test states
   const [questions, setQuestions] = useState<Question[]>([]);
   const [testStates, setTestStates] = useState<QuestionState[]>([]);
@@ -157,30 +114,23 @@ export default function CBTPlayer() {
     setResult(null);
     setShowResult(false);
     
-    const params: any = {};
-    if (isAdvancedActive) {
-      params.subject_limits = subjectLimits;
-      const totalLimit = Object.values(subjectLimits).reduce((acc, v) => acc + v, 0);
-      params.limit = totalLimit;
-    } else {
-      params.subjects = selectedSubjects;
-      params.difficulties = selectedDifficulties;
-      params.limit = testLimit;
+    const params: any = {
+      limit: testLimit || 10
+    };
+
+    if (selectedSubject !== "all") {
+      params.subject = selectedSubject;
+    }
+    
+    if (selectedDifficulty !== "all") {
+      params.difficulty = selectedDifficulty;
     }
 
     if (selectedChapters.length > 0) {
-      params.chapters = selectedChapters;
+      params.chapters = selectedChapters.map(c => c.includes(":") ? c.split(":")[1].trim() : c);
     }
     if (selectedPapers.length > 0) {
       params.paper_ids = selectedPapers;
-    }
-    
-    // Compatibility fallback for API
-    if (params.difficulties && params.difficulties.length === 1) {
-      params.difficulty = params.difficulties[0];
-    }
-    if (params.subjects && params.subjects.length === 1) {
-      params.subject = params.subjects[0];
     }
     
     api.generateTest(params).then((data) => {
@@ -190,12 +140,13 @@ export default function CBTPlayer() {
       const states: QuestionState[] = data.map((q, idx) => ({
         question: q,
         selectedAnswer: null,
-        status: idx === 0 ? "not_answered" : "not_visited", // first is instantly visited
+        status: idx === 0 ? "not_answered" : "not_visited",
         timeSpent: 0
       }));
       
       setTestStates(states);
       setCurrentIndex(0);
+      
       // Calculate total test duration based on per-subject settings
       let totalTestSeconds = 0;
       data.forEach((q) => {
@@ -208,32 +159,29 @@ export default function CBTPlayer() {
           totalTestSeconds += globalDefaultSec;
         }
       });
-      setTimeLeft(totalTestSeconds);
+      setTimeLeft(totalTestSeconds || data.length * 180);
       setIsTestActive(true);
       setGenerating(false);
       
-      // Start test timer countdown
       startTimers();
     }).catch((err) => {
-      setError(err.message || "Failed to find matching CBT-eligible questions.");
+      setError(err.message || "Failed to find matching CBT-eligible questions for this selection.");
       setGenerating(false);
     });
   };
 
   const startTimers = () => {
-    // 1. Overall test timer
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           stopTimers();
-          handleSubmitTest(true); // Auto-submit when time is up
+          handleSubmitTest(true);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    // 2. Active question timer (tracks seconds on active question)
     questionTimerRef.current = setInterval(() => {
       setTestStates((prevStates) => {
         const updated = [...prevStates];
@@ -248,12 +196,10 @@ export default function CBTPlayer() {
     }, 1000);
   };
 
-  // Re-start active question tracking when index changes
   useEffect(() => {
     if (isTestActive) {
       if (questionTimerRef.current) clearInterval(questionTimerRef.current);
       
-      // Mark current question as "not_answered" if it was "not_visited"
       setTestStates((prev) => {
         const updated = [...prev];
         if (updated[currentIndex] && updated[currentIndex].status === "not_visited") {
@@ -281,7 +227,6 @@ export default function CBTPlayer() {
     setTestStates((prev) => {
       const updated = [...prev];
       updated[currentIndex].selectedAnswer = ans;
-      // Update state indicator
       if (updated[currentIndex].status === "marked_review" || updated[currentIndex].status === "answered_marked") {
         updated[currentIndex].status = "answered_marked";
       } else {
@@ -370,15 +315,25 @@ export default function CBTPlayer() {
 
   // Render question content formatting formulas/options
   const renderQuestionBody = (q: Question) => {
-    const isMCQ = q.question_type === "MCQ" || q.question_type === "AR";
+    const hasOptions = Boolean(q.options && q.question_type !== "NUMERICAL");
     const currentState = testStates[currentIndex];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-        {/* Question Text */}
-        <div style={{ fontSize: "1.05rem", whiteSpace: "pre-wrap", lineHeight: "1.6", fontWeight: "500" }}>
-          {q.raw_content}
+        {/* Question Type & Subject Header Badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span className="badge badge-easy" style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700 }}>
+            {q.question_type === "MATCH" ? "Match The Following" : q.question_type}
+          </span>
+          {q.tags?.subject && (
+            <span style={{ fontSize: "0.8rem", color: "var(--primary)", fontWeight: 600 }}>
+              {q.tags.subject} {q.tags.chapter ? `• ${q.tags.chapter}` : ""}
+            </span>
+          )}
         </div>
+
+        {/* Clean Formatted Question Content (Tables & Math) */}
+        <FormattedQuestion content={q.raw_content} fontSize="1.05rem" />
 
         {/* Extracted Diagram/Images */}
         {q.images_list && q.images_list.length > 0 && (
@@ -402,9 +357,9 @@ export default function CBTPlayer() {
           </div>
         )}
 
-        {/* Dynamic Question Forms */}
-        {isMCQ && q.options && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "10px" }}>
+        {/* Dynamic Question Option Buttons (Supports MCQ, AR, and MATCH) */}
+        {hasOptions && q.options && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "12px" }}>
             {JSON.parse(q.options).map((opt: string, idx: number) => {
               const optChar = String.fromCharCode(65 + idx); // A, B, C, D
               const isSelected = currentState?.selectedAnswer === optChar;
@@ -414,21 +369,40 @@ export default function CBTPlayer() {
                   key={idx}
                   onClick={() => handleSelectAnswer(optChar)}
                   style={{
-                    display: "flex", alignItems: "center", gap: "12px", padding: "14px 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "14px",
+                    padding: "14px 18px",
                     border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border-color)",
-                    borderRadius: "6px", cursor: "pointer",
-                    backgroundColor: isSelected ? "var(--bg-accent)" : "rgba(255,255,255,0.02)",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    backgroundColor: isSelected ? "rgba(99, 102, 241, 0.12)" : "rgba(255,255,255,0.02)",
+                    boxShadow: isSelected ? "0 0 12px rgba(99, 102, 241, 0.25)" : "none",
                     transition: "all 0.15s ease"
                   }}
                 >
-                  <input 
-                    type="radio" 
-                    name={`q-${q.id}`} 
-                    checked={isSelected}
-                    onChange={() => {}} // handled by click
-                    style={{ accentColor: "var(--primary)", width: "16px", height: "16px" }}
-                  />
-                  <span style={{ fontSize: "0.95rem" }}>{opt}</span>
+                  <div
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: "0.85rem",
+                      backgroundColor: isSelected ? "var(--primary)" : "rgba(255,255,255,0.08)",
+                      color: isSelected ? "#fff" : "var(--text-secondary)",
+                      border: isSelected ? "none" : "1px solid var(--border-color)",
+                      flexShrink: 0
+                    }}
+                  >
+                    {optChar}
+                  </div>
+                  
+                  <span style={{ fontSize: "0.95rem", color: "var(--text-primary)", lineHeight: "1.4" }}>
+                    {opt}
+                  </span>
                 </label>
               );
             })}
@@ -448,456 +422,340 @@ export default function CBTPlayer() {
             />
           </div>
         )}
-
-        {q.question_type === "MATCH" && q.options && (
-          <div style={{ marginTop: "10px" }}>
-            <p className="form-label" style={{ marginBottom: "8px" }}>Provide matching columns (Map Column I row to Column II code, e.g. A-P, B-R...):</p>
-            <textarea
-              className="form-input"
-              placeholder="Format: A-P, B-R, C-Q, D-S"
-              value={currentState?.selectedAnswer || ""}
-              onChange={(e) => handleSelectAnswer(e.target.value)}
-              style={{ height: "60px", fontFamily: "var(--font-mono)", fontSize: "1rem" }}
-            />
-          </div>
-        )}
       </div>
     );
   };
 
   // ----------------------------------------------------
-  // TEST SETUP LAYOUT (PRE-TEST)
+  // STREAMLINED PRACTICE SETUP SCREEN
   // ----------------------------------------------------
   if (!isTestActive && !showResult) {
+    const subjects = [
+      { id: "Biology", label: "Biology", count: 38, color: "var(--success)" },
+      { id: "Physics", label: "Physics", count: 0, color: "var(--primary)" },
+      { id: "Chemistry", label: "Chemistry", count: 0, color: "var(--warning)" },
+      { id: "Mathematics", label: "Mathematics", count: 0, color: "#8b5cf6" },
+      { id: "all", label: "All Subjects", count: availableQuestionsCount, color: "var(--text-primary)" },
+    ];
+
+    const presets = [
+      { id: "10", label: "⚡ Sprint (10Q)", count: 10, desc: "~15-20 mins" },
+      { id: "20", label: "🎯 Target (20Q)", count: 20, desc: "~30-40 mins" },
+      { id: "45", label: "🧪 Subject Mock (45Q)", count: 45, desc: "~45-60 mins" },
+      { id: "90", label: "🏆 Grand Mock (90Q)", count: 90, desc: "~3 Hours" },
+      { id: "custom", label: "⚙️ Custom", count: testLimit, desc: "Personalized" }
+    ];
+
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "32px" }}>
-        <div className="glass-panel" style={{ width: "520px", padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
-          <div>
-            <h1 style={{ fontSize: "1.5rem", fontWeight: "700", marginBottom: "8px", textAlign: "center" }}>
-              Configure Mock CBT Test
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", minHeight: "85vh", padding: "32px 16px" }}>
+        <div className="glass-panel" style={{ width: "100%", maxWidth: "640px", padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
+          
+          {/* Header */}
+          <div style={{ textAlign: "center" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "rgba(99, 102, 241, 0.12)", color: "var(--primary)", padding: "4px 12px", borderRadius: "20px", fontSize: "0.8rem", fontWeight: 700, marginBottom: "8px" }}>
+              <Zap size={14} /> CBT EXAM ENGINE
+            </div>
+            <h1 style={{ fontSize: "1.6rem", fontWeight: "800", margin: "0 0 6px 0" }}>
+              Create Practice Session
             </h1>
-            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", textAlign: "center" }}>
-              Simulate NTA NEET/JEE computer-based test platform aligned with NCERT syllabus.
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", margin: 0 }}>
+              Simulate JEE / NEET entrance test player with instant scoring & analytics.
             </p>
           </div>
 
           {error && (
-            <div className="glass-panel" style={{ borderColor: "var(--danger)", padding: "12px", display: "flex", gap: "8px", alignItems: "center" }}>
-              <AlertTriangle size={16} color="var(--danger)" />
-              <span style={{ fontSize: "0.8rem", color: "var(--danger)" }}>{error}</span>
+            <div style={{ padding: "12px 16px", backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid var(--danger)", borderRadius: "8px", display: "flex", gap: "10px", alignItems: "center" }}>
+              <AlertTriangle size={18} color="var(--danger)" />
+              <span style={{ fontSize: "0.85rem", color: "var(--danger)", fontWeight: 500 }}>{error}</span>
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Subject Selector (Hide if Advanced Limit is checked since that specifies counts per subject) */}
-            {!isAdvancedActive && (
-              <div className="form-group">
-                <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>Select Subjects (Multiselect)</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                  {["Physics", "Chemistry", "Biology", "Mathematics"].map((subj) => {
-                    const isSelected = selectedSubjects.includes(subj);
-                    return (
-                      <button
-                        key={subj}
-                        onClick={() => {
-                          setSelectedSubjects((prev) => {
-                            if (prev.includes(subj)) {
-                              if (prev.length === 1) return prev; // Do not empty
-                              return prev.filter((s) => s !== subj);
-                            } else {
-                              return [...prev, subj];
-                            }
-                          });
-                        }}
-                        className={`btn ${isSelected ? "btn-primary" : "btn-secondary"}`}
-                        style={{
-                          flex: "1 1 calc(50% - 8px)",
-                          padding: "10px 14px",
-                          fontSize: "0.85rem",
-                          border: isSelected ? "1px solid var(--primary)" : "1px solid var(--border-color)",
-                          boxShadow: isSelected ? "0 0 8px rgba(99, 102, 241, 0.25)" : "none",
-                          transition: "all 0.15s ease"
-                        }}
-                      >
-                        {subj}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Difficulty Selector */}
-            <div className="form-group">
-              <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>Select Difficulty (Multiselect)</label>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {[
-                  { value: "easy", label: "Easy", color: "var(--success)" },
-                  { value: "medium", label: "Medium", color: "var(--warning)" },
-                  { value: "hard", label: "Hard", color: "#8b5cf6" }
-                ].map((diff) => {
-                  const isSelected = selectedDifficulties.includes(diff.value);
-                  return (
-                    <button
-                      key={diff.value}
-                      onClick={() => {
-                        setSelectedDifficulties((prev) => {
-                          if (prev.includes(diff.value)) {
-                            if (prev.length === 1) return prev; // Do not empty
-                            return prev.filter((d) => d !== diff.value);
-                          } else {
-                            return [...prev, diff.value];
-                          }
-                        });
-                      }}
-                      className="btn"
-                      style={{
-                        flex: "1",
-                        padding: "10px 12px",
-                        fontSize: "0.85rem",
-                        backgroundColor: isSelected ? diff.color : "rgba(255,255,255,0.02)",
-                        border: isSelected ? `1px solid ${diff.color}` : "1px solid var(--border-color)",
-                        color: isSelected ? "#fff" : "var(--text-secondary)",
-                        boxShadow: isSelected ? `0 0 8px ${diff.color}40` : "none",
-                        transition: "all 0.15s ease"
-                      }}
-                    >
-                      {diff.label}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* 1. Quick Presets */}
+          <div>
+            <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
+              1. Choose Practice Format
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "8px" }}>
+              {presets.map((p) => {
+                const isSelected = presetMode === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setPresetMode(p.id as any);
+                      if (p.id !== "custom") setTestLimit(p.count);
+                    }}
+                    style={{
+                      padding: "10px 8px",
+                      borderRadius: "8px",
+                      border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border-color)",
+                      backgroundColor: isSelected ? "rgba(99, 102, 241, 0.15)" : "rgba(255,255,255,0.02)",
+                      color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "2px",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    <span style={{ fontSize: "0.82rem", fontWeight: isSelected ? 700 : 500 }}>
+                      {p.label}
+                    </span>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                      {p.desc}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Advanced Toggle */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-color)", paddingTop: "16px", marginTop: "8px" }}>
-              <div>
-                <label className="form-label" style={{ margin: "0", display: "block" }}>Advanced Question Cap</label>
-                <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Choose specific question counts per subject</span>
-              </div>
-              <label className="switch" style={{ position: "relative", display: "inline-block", width: "46px", height: "24px", cursor: "pointer" }}>
-                <input 
-                  type="checkbox" 
-                  checked={isAdvancedActive} 
-                  onChange={(e) => setIsAdvancedActive(e.target.checked)}
-                  style={{ opacity: 0, width: 0, height: 0 }}
-                />
-                <span style={{
-                  position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-                  backgroundColor: isAdvancedActive ? "var(--primary)" : "#374151",
-                  transition: ".2s ease", borderRadius: "24px"
-                }}>
-                  <span style={{
-                    position: "absolute", content: '""', height: "18px", width: "18px", left: "3px", bottom: "3px",
-                    backgroundColor: "#fff", transition: ".2s ease", borderRadius: "50%",
-                    transform: isAdvancedActive ? "translateX(22px)" : "none"
-                  }} />
-                </span>
+          {/* 2. Subject Selection */}
+          <div>
+            <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
+              2. Select Subject
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(105px, 1fr))", gap: "8px" }}>
+              {subjects.map((s) => {
+                const isSelected = selectedSubject === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedSubject(s.id)}
+                    style={{
+                      padding: "12px 8px",
+                      borderRadius: "8px",
+                      border: isSelected ? `2px solid ${s.color}` : "1px solid var(--border-color)",
+                      backgroundColor: isSelected ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.15)",
+                      color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "4px",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>{s.label}</span>
+                    <span style={{ 
+                      fontSize: "0.68rem", 
+                      padding: "2px 6px", 
+                      borderRadius: "10px", 
+                      backgroundColor: s.count > 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(255,255,255,0.05)",
+                      color: s.count > 0 ? "var(--success)" : "var(--text-muted)"
+                    }}>
+                      {s.count > 0 ? `${s.count} Qs` : "0 Qs"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Question Count (if custom or tweaking) */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <label className="form-label" style={{ margin: 0 }}>
+                3. Number of Questions: <strong style={{ color: "var(--primary)" }}>{testLimit}</strong>
               </label>
             </div>
-
-            {/* Standard Limit Selection */}
-            {!isAdvancedActive && (
-              <div className="form-group">
-                <label className="form-label">Questions Count</label>
-                <select className="form-select" value={testLimit} onChange={(e) => setTestLimit(Number(e.target.value))}>
-                  <option value={5}>5 Questions</option>
-                  <option value={10}>10 Questions</option>
-                  <option value={20}>20 Questions</option>
-                  <option value={45}>45 Questions</option>
-                  <option value={90}>90 Questions</option>
-                  <option value={180}>180 Questions</option>
-                </select>
-              </div>
-            )}
-
-            {/* Chapters Multiselect */}
-            <div className="form-group">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <label className="form-label" style={{ margin: 0 }}>
-                  Select Chapters (Optional)
-                </label>
-                {activeChapters.length > 0 && (
-                  <div style={{ display: "flex", gap: "10px", fontSize: "0.75rem" }}>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedChapters(activeChapters.map(c => c.chapter))}
-                      style={{ background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontWeight: "600", padding: 0 }}
-                    >
-                      Select All
-                    </button>
-                    <span style={{ color: "var(--text-muted)" }}>|</span>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedChapters([])}
-                      style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontWeight: "600", padding: 0 }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              {activeChapters.length === 0 ? (
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "12px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
-                  Select at least one subject to view chapters.
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <input 
-                    type="text"
-                    placeholder="Search chapters..."
-                    className="form-input"
-                    value={chapterSearch}
-                    onChange={(e) => setChapterSearch(e.target.value)}
-                    style={{ padding: "8px 12px", fontSize: "0.8rem", height: "34px", backgroundColor: "rgba(0,0,0,0.1)" }}
-                  />
-                  
-                  <div style={{
-                    maxHeight: "140px",
-                    overflowY: "auto",
-                    padding: "8px 10px",
-                    backgroundColor: "rgba(0,0,0,0.2)",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "var(--border-radius-sm)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px"
-                  }}>
-                    {filteredChapters.length === 0 ? (
-                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>
-                        No chapters match your search.
-                      </div>
-                    ) : (
-                      filteredChapters.map(({ chapter, subject }) => {
-                        const isSelected = selectedChapters.includes(chapter);
-                        const subjectColor = 
-                          subject === "Physics" ? "var(--primary)" :
-                          subject === "Chemistry" ? "var(--warning)" :
-                          subject === "Biology" ? "var(--success)" :
-                          "#8b5cf6";
-                          
-                        return (
-                          <label 
-                            key={chapter} 
-                            style={{ 
-                              display: "flex", 
-                              alignItems: "center", 
-                              justifyContent: "space-between",
-                              fontSize: "0.85rem", 
-                              cursor: "pointer", 
-                              color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
-                              padding: "4px 6px",
-                              borderRadius: "4px",
-                              backgroundColor: isSelected ? "rgba(255,255,255,0.03)" : "transparent",
-                              transition: "background-color 0.15s ease"
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexGrow: 1, overflow: "hidden" }}>
-                              <input 
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {
-                                  setSelectedChapters(prev => 
-                                    prev.includes(chapter) ? prev.filter(c => c !== chapter) : [...prev, chapter]
-                                  );
-                                }}
-                                style={{ accentColor: "var(--primary)" }}
-                              />
-                              <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                                {chapter}
-                              </span>
-                            </div>
-                            <span style={{ 
-                              fontSize: "0.65rem", 
-                              fontWeight: "600", 
-                              padding: "2px 6px", 
-                              borderRadius: "10px", 
-                              backgroundColor: `${subjectColor}15`, 
-                              color: subjectColor,
-                              border: `1px solid ${subjectColor}30`,
-                              marginLeft: "8px",
-                              flexShrink: 0
-                            }}>
-                              {subject.substring(0, 3)}
-                            </span>
-                          </label>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              {[5, 10, 15, 20, 30, 38].map((cnt) => (
+                <button
+                  key={cnt}
+                  type="button"
+                  onClick={() => {
+                    setTestLimit(cnt);
+                    setPresetMode("custom");
+                  }}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "20px",
+                    border: testLimit === cnt ? "1px solid var(--primary)" : "1px solid var(--border-color)",
+                    backgroundColor: testLimit === cnt ? "var(--primary)" : "rgba(255,255,255,0.03)",
+                    color: testLimit === cnt ? "#fff" : "var(--text-secondary)",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  {cnt} Qs
+                </button>
+              ))}
+              <input
+                type="number"
+                min="1"
+                max="180"
+                value={testLimit}
+                onChange={(e) => {
+                  setTestLimit(Math.max(1, parseInt(e.target.value, 10) || 1));
+                  setPresetMode("custom");
+                }}
+                className="form-input"
+                style={{ width: "70px", padding: "6px 8px", textAlign: "center", fontSize: "0.85rem", height: "32px" }}
+              />
             </div>
+          </div>
 
-            {/* Source Paper Multiselect */}
-            <div className="form-group">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <label className="form-label" style={{ margin: 0 }}>
-                  Select Source Paper (Optional)
-                </label>
-                {papers.length > 0 && (
-                  <div style={{ display: "flex", gap: "10px", fontSize: "0.75rem" }}>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedPapers(papers.map(p => p.id))}
-                      style={{ background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontWeight: "600", padding: 0 }}
-                    >
-                      Select All
-                    </button>
-                    <span style={{ color: "var(--text-muted)" }}>|</span>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedPapers([])}
-                      style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontWeight: "600", padding: 0 }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              {papers.length === 0 ? (
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", padding: "12px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "var(--border-radius-sm)", textAlign: "center" }}>
-                  No papers ingested yet. Upload some in the Ingestion tab.
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <input 
-                    type="text"
-                    placeholder="Search papers..."
-                    className="form-input"
-                    value={paperSearch}
-                    onChange={(e) => setPaperSearch(e.target.value)}
-                    style={{ padding: "8px 12px", fontSize: "0.8rem", height: "34px", backgroundColor: "rgba(0,0,0,0.1)" }}
-                  />
-                  
-                  <div style={{
-                    maxHeight: "120px",
-                    overflowY: "auto",
-                    padding: "8px 10px",
-                    backgroundColor: "rgba(0,0,0,0.2)",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "var(--border-radius-sm)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px"
-                  }}>
-                    {filteredPapers.length === 0 ? (
-                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>
-                        No papers match your search.
-                      </div>
-                    ) : (
-                      filteredPapers.map(p => {
-                        const isSelected = selectedPapers.includes(p.id);
-                        return (
-                          <label 
-                            key={p.id} 
-                            style={{ 
-                              display: "flex", 
-                              alignItems: "center", 
-                              justifyContent: "space-between",
-                              fontSize: "0.85rem", 
-                              cursor: "pointer", 
-                              color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
-                              padding: "4px 6px",
-                              borderRadius: "4px",
-                              backgroundColor: isSelected ? "rgba(255,255,255,0.03)" : "transparent",
-                              transition: "background-color 0.15s ease"
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexGrow: 1, overflow: "hidden" }}>
-                              <input 
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {
-                                  setSelectedPapers(prev => 
-                                    prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
-                                  );
-                                }}
-                                style={{ accentColor: "var(--primary)" }}
-                              />
-                              <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={p.filename}>
-                                {p.filename}
-                              </span>
-                            </div>
-                          </label>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
+          {/* 4. Difficulty Selector */}
+          <div>
+            <label className="form-label" style={{ marginBottom: "8px", display: "block" }}>
+              4. Difficulty Level
+            </label>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {[
+                { id: "all", label: "All Levels", color: "var(--primary)" },
+                { id: "easy", label: "🟢 Easy", color: "var(--success)" },
+                { id: "medium", label: "🟡 Medium", color: "var(--warning)" },
+                { id: "hard", label: "🟣 Hard", color: "#8b5cf6" }
+              ].map((diff) => {
+                const isSelected = selectedDifficulty === diff.id;
+                return (
+                  <button
+                    key={diff.id}
+                    type="button"
+                    onClick={() => setSelectedDifficulty(diff.id)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: isSelected ? `1px solid ${diff.color}` : "1px solid var(--border-color)",
+                      backgroundColor: isSelected ? `${diff.color}20` : "rgba(255,255,255,0.02)",
+                      color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontWeight: isSelected ? 700 : 500,
+                      fontSize: "0.82rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {diff.label}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Advanced Subject Limits Panel */}
-            {isAdvancedActive && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px", backgroundColor: "var(--bg-tertiary)", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
-                <h4 style={{ fontSize: "0.85rem", fontWeight: "700", marginBottom: "4px" }}>Set Subject Counts</h4>
-                {["Physics", "Chemistry", "Biology", "Mathematics"].map((subj) => (
-                  <div key={subj} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.85rem", fontWeight: "500" }}>{subj}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <button 
-                        onClick={() => setSubjectLimits(prev => ({ ...prev, [subj]: Math.max(0, prev[subj] - 1) }))}
-                        className="btn btn-secondary"
-                        style={{ padding: "4px 8px", fontSize: "0.75rem", minWidth: "26px", height: "26px" }}
-                      >
-                        -
-                      </button>
-                      <input 
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={subjectLimits[subj]}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0));
-                          setSubjectLimits(prev => ({ ...prev, [subj]: val }));
-                        }}
-                        style={{
-                          width: "48px",
-                          height: "26px",
-                          textAlign: "center",
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "0.9rem",
-                          fontWeight: "600",
-                          backgroundColor: "rgba(0,0,0,0.15)",
-                          border: "1px solid var(--border-color)",
-                          borderRadius: "4px",
-                          color: "var(--text-primary)",
-                          padding: "0"
-                        }}
-                      />
-                      <button 
-                        onClick={() => setSubjectLimits(prev => ({ ...prev, [subj]: Math.min(30, prev[subj] + 1) }))}
-                        className="btn btn-secondary"
-                        style={{ padding: "4px 8px", fontSize: "0.75rem", minWidth: "26px", height: "26px" }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                
-                {/* Dynamic total count summary */}
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid var(--border-color)", paddingTop: "10px", marginTop: "4px", fontSize: "0.85rem", fontWeight: "700" }}>
-                  <span>Total Selected Questions:</span>
-                  <span style={{ color: "var(--primary)" }}>
-                    {Object.values(subjectLimits).reduce((acc, v) => acc + v, 0)} questions
-                  </span>
+          {/* 5. Optional Chapter / Paper Refinements (Collapsible) */}
+          <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "14px" }}>
+            <button
+              type="button"
+              onClick={() => setShowOptionalFilters(!showOptionalFilters)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-secondary)",
+                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                cursor: "pointer",
+                padding: "4px 0"
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600 }}>
+                🔍 Filter by Specific Chapter or Paper (Optional)
+              </span>
+              {showOptionalFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {showOptionalFilters && (
+              <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "12px", padding: "14px", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: "8px" }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Chapter</label>
+                  <select
+                    className="form-select"
+                    style={{ fontSize: "0.85rem", padding: "8px" }}
+                    value={selectedChapters[0] || ""}
+                    onChange={(e) => setSelectedChapters(e.target.value ? [e.target.value] : [])}
+                  >
+                    <option value="">All Chapters in Syllabus</option>
+                    {activeChapters.map((ch) => (
+                      <option key={ch} value={ch}>{ch}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Source Paper</label>
+                  <select
+                    className="form-select"
+                    style={{ fontSize: "0.85rem", padding: "8px" }}
+                    value={selectedPapers[0] || ""}
+                    onChange={(e) => setSelectedPapers(e.target.value ? [Number(e.target.value)] : [])}
+                  >
+                    <option value="">All Uploaded Papers</option>
+                    {papers.map((p) => (
+                      <option key={p.id} value={p.id}>{p.filename} ({p.question_count} Qs)</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
           </div>
 
+          {/* Test Overview Summary Box */}
+          <div style={{
+            padding: "14px 18px",
+            borderRadius: "8px",
+            backgroundColor: "rgba(99, 102, 241, 0.06)",
+            border: "1px solid rgba(99, 102, 241, 0.2)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontSize: "0.85rem"
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+                {selectedSubject === "all" ? "All Subjects Practice" : `${selectedSubject} Drill`}
+              </span>
+              <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>
+                Marking Scheme: <strong>+4 / -1 / 0</strong>
+              </span>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "1rem" }}>
+                {testLimit} Questions
+              </div>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                ~{Math.round((testLimit * 180) / 60)} mins limit
+              </span>
+            </div>
+          </div>
+
+          {/* Start CTA */}
           <button 
             onClick={handleStartTest} 
             className="btn btn-primary" 
-            disabled={generating || (isAdvancedActive && Object.values(subjectLimits).reduce((acc, v) => acc + v, 0) === 0)}
-            style={{ width: "100%", padding: "14px", fontSize: "1rem" }}
+            disabled={generating}
+            style={{
+              width: "100%",
+              padding: "16px",
+              fontSize: "1.05rem",
+              fontWeight: 800,
+              borderRadius: "8px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              boxShadow: "0 4px 16px rgba(99, 102, 241, 0.4)"
+            }}
           >
-            {generating ? "Searching question vault..." : "Initialize CBT Exam"}
+            {generating ? (
+              <>Searching question vault...</>
+            ) : (
+              <>
+                <Play size={18} fill="currentColor" /> Start Practice Test
+              </>
+            )}
           </button>
+
+        </div>
+      </div>
+    );
+  }
         </div>
       </div>
     );
