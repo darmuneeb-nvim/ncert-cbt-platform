@@ -14,14 +14,18 @@ from app.models import Paper, Question, QuestionTag, Attempt
 class TestCBTPlatform(unittest.TestCase):
     
     def setUp(self):
-        # Create tables in test database (SQLite in-memory is perfect for testing!)
-        # Overwrite connection parameters
         Base.metadata.create_all(bind=engine)
         self.db = SessionLocal()
+        # Clean tables before running each test
+        self.db.query(Attempt).delete()
+        self.db.query(QuestionTag).delete()
+        self.db.query(Question).delete()
+        self.db.query(Paper).delete()
+        self.db.commit()
 
     def tearDown(self):
         self.db.close()
-        Base.metadata.drop_all(bind=engine)
+
 
     def test_regex_parser_fallback(self):
         """Verifies that the regex-based fallback parser extracts questions and options correctly."""
