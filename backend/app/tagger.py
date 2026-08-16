@@ -159,32 +159,38 @@ Return the tagging results STRICTLY as a JSON object with this schema:
 
 def run_subject_only_tagging_fallback(db: Session):
     """
-    Fallback method to run low-cost or rule-based subject prediction.
-    Ensures questions have AT LEAST a Subject tag so they are CBT eligible.
+    Fallback method to run rule-based subject, chapter, and concept prediction against taxonomy.
+    Ensures questions have Subject/Chapter tags and valid tagging_status so they are CBT eligible.
     """
-    untagged_questions = db.query(Question).outerjoin(QuestionTag).filter(
-        Question.tagging_status == "untagged",
-        (QuestionTag.id == None) | (QuestionTag.subject == None)
+    taxonomy = load_taxonomy()
+    
+    questions_to_check = db.query(Question).outerjoin(QuestionTag).filter(
+        (QuestionTag.id == None) | 
+        (QuestionTag.subject == None) | 
+        (QuestionTag.chapter == None) |
+        (Question.tagging_status.in_(["untagged", "needs_review"]))
     ).all()
 
-    for q in untagged_questions:
-        text = q.raw_content.lower()
+    for q in questions_to_check:
+        text = (q.raw_content + " " + (q.options or "")).lower()
+        paper_filename = q.paper.filename.lower() if q.paper else ""
         predicted_subject = None
+        predicted_chapter = None
+        predicted_concept = None
         
-        # 1. Inspect keyword matches
-        if any(w in text for w in ["velocity", "force", "acceleration", "optics", "charge", "current", "magnetic", "lens", "mass", "motion", "gravity", "energy", "work", "friction", "speed"]):
+        # 1. Inspect subject keywords
+        if any(w in text for w in ["velocity", "force", "acceleration", "optics", "charge", "current", "magnetic", "lens", "mass", "motion", "gravity", "energy", "work", "friction", "speed", "newton"]):
             predicted_subject = "Physics"
         elif any(w in text for w in ["molecule", "atom", "reaction", "acid", "base", "valency", "bond", "equilibrium", "organic", "mol", "nacl", "dissolved", "concentration", "molar", "compound", "chemical", "solvent", "solution"]):
             predicted_subject = "Chemistry"
-        elif any(w in text for w in ["cell", "plant", "organ", "chromosome", "dna", "rna", "blood", "heart", "respiration", "species", "taxon", "genus", "family", "order", "class", "phylum", "kingdom", "binomial", "nomenclature", "botany", "zoology", "organism", "living", "reproduction"]):
+        elif any(w in text for w in ["cell", "plant", "organ", "chromosome", "dna", "rna", "blood", "heart", "respiration", "species", "taxon", "genus", "family", "order", "class", "phylum", "kingdom", "binomial", "nomenclature", "botany", "zoology", "organism", "living", "reproduction", "meiosis", "mitosis", "interphase", "prophase", "metaphase", "anaphase", "telophase"]):
             predicted_subject = "Biology"
         elif any(w in text for w in ["derivative", "integral", "matrix", "determinant", "function", "probability", "trigonometry", "vector", "geometry", "equation", "solve", "value of"]):
             predicted_subject = "Mathematics"
             
         # 2. Context-aware file fallback if no direct keyword match
         if not predicted_subject:
-            paper_filename = q.paper.filename.lower() if q.paper else ""
-            if any(w in paper_filename for w in ["botany", "zoology", "biology", "bio"]):
+            if any(w in paper_filename for w in ["botany", "zoology", "biology", "bio", "cell"]):
                 predicted_subject = "Biology"
             elif any(w in paper_filename for w in ["chemistry", "chem"]):
                 predicted_subject = "Chemistry"
@@ -193,24 +199,60 @@ def run_subject_only_tagging_fallback(db: Session):
             elif any(w in paper_filename for w in ["math", "mathematics", "jee"]):
                 predicted_subject = "Mathematics"
             else:
-                predicted_subject = "Biology" # Default NEET/Botany fallback
+                predicted_subject = "Biology"
 
-        # 3. Apply Tag Record
+        # 3. Chapter & Concept keyword mapping
+        if predicted_subject == "Biology":
+            if any(w in text or w in paper_filename for w in ["cell cycle", "mitosis", "meiosis", "prophase", "metaphase", "anaphase", "telophase", "chiasmata", "kinetochore", "synapsis", "recombinase", "centromere", "chromatid", "chromosome", "interphase", "g1", "g2", "s phase", "s-phase", "centriole"]):
+                predicted_chapter = "Cell: Structure and Functions"
+                predicted_concept = "Cell Cycle and Mitosis/Meiosis"
+            elif any(w in text for w in ["photosynthesis", "chlorophyll", "calvin", "light reaction"]):
+                predicted_chapter = "Plant Physiology"
+                predicted_concept = "Photosynthesis in Higher Plants"
+            elif any(w in text for w in ["respiration", "krebs", "glycolysis", "atp"]):
+                predicted_chapter = "Plant Physiology"
+                predicted_concept = "Respiration in Plants"
+            elif any(w in text for w in ["reproduction", "embryo", "gamete", "pollination", "sperm", "ovum"]):
+                predicted_chapter = "Reproduction"
+                predicted_concept = "Human Reproduction"
+        elif predicted_subject == "Physics":
+            if any(w in text for w in ["motion", "velocity", "acceleration", "projectile"]):
+                predicted_chapter = "Kinematics"
+                predicted_concept = "Motion in a Straight Line"
+            elif any(w in text for w in ["force", "friction", "newton"]):
+                predicted_chapter = "Laws of Motion"
+                predicted_concept = "Newton's Laws"
+            elif any(w in text for w in ["lens", "mirror", "refraction", "reflection", "optics", "prism"]):
+                predicted_chapter = "Optics"
+                predicted_concept = "Lenses and Prisms"
+
+        # 4. Apply Tag Record
         tag = db.query(QuestionTag).filter(QuestionTag.question_id == q.id).first()
         if not tag:
             tag = QuestionTag(question_id=q.id)
             db.add(tag)
             
         tag.subject = predicted_subject
+        if predicted_chapter:
+            tag.chapter = predicted_chapter
+        if predicted_concept:
+            tag.concept = predicted_concept
         if not tag.difficulty:
             tag.difficulty = "medium"
-        tag.tag_source = "manual" # local fallback indicator
-        tag.confidence = 0.5
+        tag.tag_source = "rule_fallback"
+        tag.confidence = 0.85 if predicted_chapter else 0.6
         tag.updated_at = datetime.utcnow()
         
-        q.tagging_status = "subject_tagged"
+        # 5. Determine tagging status
+        if q.correct_answer and tag.subject and tag.chapter:
+            q.tagging_status = "fully_tagged"
+        elif q.correct_answer and tag.subject:
+            q.tagging_status = "subject_tagged"
+        elif not q.correct_answer:
+            q.tagging_status = "needs_review"
+            
         db.commit()
-        logger.info(f"Fallback tagged question {q.id} as subject: {predicted_subject}")
+        logger.info(f"Fallback tagged question {q.id} as {predicted_subject} -> {predicted_chapter} (status={q.tagging_status})")
 
 def run_subject_only_tagging_fallback_task():
     """
