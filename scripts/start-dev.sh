@@ -58,7 +58,7 @@ for ((i=1; i<=MAX_ATTEMPTS; i++)); do
     fi
 
     # Check if ports are listening
-    if lsof -i :8000 >/dev/null 2>&1 && lsof -i :5173 >/dev/null 2>&1; then
+    if curl -s -o /dev/null http://localhost:8000/docs && curl -s -o /dev/null http://localhost:5173; then
         echo "All services are up!"
         echo "Backend URL:  http://localhost:8000"
         echo "Frontend URL: http://localhost:5173"
