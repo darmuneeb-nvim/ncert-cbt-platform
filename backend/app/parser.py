@@ -92,12 +92,12 @@ def clean_junk_advertisement_lines(text: str) -> str:
     return res
 
 def clean_option_text(opt: str) -> str:
-    """Strips leading option bullets like (a), (A), a., 1., etc. to prevent double labeling."""
+    """Strips leading option bullets like (a), (A), a., A. to prevent double labeling while preserving matching codes."""
     if not opt:
         return ""
     cleaned = clean_junk_advertisement_lines(opt).strip()
-    # Strip (A), (1), (a), A., 1., a., A), 1) prefixes
-    cleaned = re.sub(r'^\s*(?:\([1-4A-Da-d]\)|[1-4A-Da-d][\.\)]|\b[1-4A-Da-d]\b[\.\)])\s*', '', cleaned)
+    # Strip (A), (a), A., a., A), a) prefixes only if followed by space or not part of match combination (e.g. A-iv)
+    cleaned = re.sub(r'^\s*(?:\([a-dA-D]\)|[a-dA-D][\.\)])\s*', '', cleaned)
     return cleaned.strip()
 
 def parse_answer_key_grid(text: str) -> Dict[str, str]:
