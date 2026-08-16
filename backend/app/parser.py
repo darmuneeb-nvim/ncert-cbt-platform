@@ -367,10 +367,22 @@ def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
     
     for idx, p_text in enumerate(pages):
         lower_p = p_text.lower()
-        if any(kw in lower_p for kw in stop_keywords):
+        found_kw = None
+        first_pos = len(p_text)
+        for kw in stop_keywords:
+            pos = lower_p.find(kw)
+            if pos != -1 and pos < first_pos:
+                first_pos = pos
+                found_kw = kw
+        
+        if found_kw:
+            pre_text = p_text[:first_pos].strip()
+            if len(pre_text) > 50:
+                question_pages.append(pre_text)
             logger.info(f"Detected Solutions/Key section on Page {idx + 1}. Stopping question collection.")
             break
-        question_pages.append(p_text)
+        else:
+            question_pages.append(p_text)
         
     if not question_pages:
         question_pages = pages
