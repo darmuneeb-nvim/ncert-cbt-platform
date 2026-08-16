@@ -178,32 +178,32 @@ def run_subject_only_tagging_fallback(db: Session):
         predicted_chapter = None
         predicted_concept = None
         
-        # 1. Inspect subject keywords
-        if any(w in text for w in ["velocity", "force", "acceleration", "optics", "charge", "current", "magnetic", "lens", "mass", "motion", "gravity", "energy", "work", "friction", "speed", "newton"]):
-            predicted_subject = "Physics"
-        elif any(w in text for w in ["molecule", "atom", "reaction", "acid", "base", "valency", "bond", "equilibrium", "organic", "mol", "nacl", "dissolved", "concentration", "molar", "compound", "chemical", "solvent", "solution"]):
-            predicted_subject = "Chemistry"
-        elif any(w in text for w in ["cell", "plant", "organ", "chromosome", "dna", "rna", "blood", "heart", "respiration", "species", "taxon", "genus", "family", "order", "class", "phylum", "kingdom", "binomial", "nomenclature", "botany", "zoology", "organism", "living", "reproduction", "meiosis", "mitosis", "interphase", "prophase", "metaphase", "anaphase", "telophase"]):
+        # 1. First check paper filename context
+        if any(w in paper_filename for w in ["botany", "zoology", "biology", "bio", "cell cycle", "cell division", "neet pyq"]):
             predicted_subject = "Biology"
-        elif any(w in text for w in ["derivative", "integral", "matrix", "determinant", "function", "probability", "trigonometry", "vector", "geometry", "equation", "solve", "value of"]):
+        elif any(w in paper_filename for w in ["chemistry", "chem"]):
+            predicted_subject = "Chemistry"
+        elif any(w in paper_filename for w in ["physics", "phy"]):
+            predicted_subject = "Physics"
+        elif any(w in paper_filename for w in ["math", "mathematics", "jee main math"]):
             predicted_subject = "Mathematics"
-            
-        # 2. Context-aware file fallback if no direct keyword match
+
+        # 2. Inspect subject keywords if not determined by filename
         if not predicted_subject:
-            if any(w in paper_filename for w in ["botany", "zoology", "biology", "bio", "cell"]):
-                predicted_subject = "Biology"
-            elif any(w in paper_filename for w in ["chemistry", "chem"]):
-                predicted_subject = "Chemistry"
-            elif any(w in paper_filename for w in ["physics", "phy"]):
+            if any(w in text for w in ["velocity", "force", "acceleration", "optics", "charge", "current", "magnetic", "lens", "mass", "motion", "gravity", "energy", "work", "friction", "speed", "newton", "wavelength"]):
                 predicted_subject = "Physics"
-            elif any(w in paper_filename for w in ["math", "mathematics", "jee"]):
+            elif any(w in text for w in ["molecule", "atom", "reaction", "acid", "base", "valency", "bond", "equilibrium", "organic", "mol", "nacl", "concentration", "molar", "compound", "chemical", "solvent", "solution"]):
+                predicted_subject = "Chemistry"
+            elif any(w in text for w in ["cell", "plant", "organ", "chromosome", "dna", "rna", "blood", "heart", "respiration", "species", "taxon", "genus", "family", "order", "class", "phylum", "kingdom", "binomial", "nomenclature", "botany", "zoology", "organism", "living", "reproduction", "meiosis", "mitosis", "interphase", "prophase", "metaphase", "anaphase", "telophase", "chiasmata", "synapsis", "centromere", "chromatid", "spindle"]):
+                predicted_subject = "Biology"
+            elif any(w in text for w in ["derivative", "integral", "matrix", "determinant", "function", "probability", "trigonometry", "vector", "geometry", "equation", "solve", "value of"]):
                 predicted_subject = "Mathematics"
             else:
                 predicted_subject = "Biology"
 
         # 3. Chapter & Concept keyword mapping
         if predicted_subject == "Biology":
-            if any(w in text or w in paper_filename for w in ["cell cycle", "mitosis", "meiosis", "prophase", "metaphase", "anaphase", "telophase", "chiasmata", "kinetochore", "synapsis", "recombinase", "centromere", "chromatid", "chromosome", "interphase", "g1", "g2", "s phase", "s-phase", "centriole"]):
+            if any(w in text or w in paper_filename for w in ["cell cycle", "cell division", "mitosis", "meiosis", "prophase", "metaphase", "anaphase", "telophase", "chiasmata", "kinetochore", "synapsis", "recombinase", "centromere", "chromatid", "chromosome", "interphase", "g1", "g2", "s phase", "s-phase", "g0", "centriole", "spindle"]):
                 predicted_chapter = "Cell: Structure and Functions"
                 predicted_concept = "Cell Cycle and Mitosis/Meiosis"
             elif any(w in text for w in ["photosynthesis", "chlorophyll", "calvin", "light reaction"]):
