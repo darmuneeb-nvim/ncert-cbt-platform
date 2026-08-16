@@ -94,14 +94,17 @@ async def upload_paper(
 
     # Add questions to DB
     for q_data in questions_list:
-        # Options list conversion to JSON string
         opts_json = json.dumps(q_data.get("options")) if q_data.get("options") else None
         
-        # Check if we have an answer for this question
         q_num = str(q_data.get("question_number"))
         corr_ans = q_data.get("correct_answer")
         if q_num in extracted_key:
             corr_ans = extracted_key[q_num]
+
+        # Determine tagging status
+        t_status = q_data.get("tagging_status", "untagged")
+        if not corr_ans:
+            t_status = "needs_review"
 
         question = Question(
             paper_id=paper.id,
@@ -111,15 +114,28 @@ async def upload_paper(
             options=opts_json,
             correct_answer=corr_ans,
             explanation=q_data.get("explanation"),
-            tagging_status="untagged",
+            tagging_status=t_status,
             images=json.dumps(q_data.get("images")) if q_data.get("images") else None
         )
         db.add(question)
+        db.flush() # Flush to get question.id
+
+        # If subject/tags were extracted directly by AI, save QuestionTag record
+        if q_data.get("subject"):
+            q_tag = QuestionTag(
+                question_id=question.id,
+                subject=q_data.get("subject"),
+                chapter=q_data.get("chapter"),
+                concept=q_data.get("concept"),
+                difficulty=q_data.get("difficulty", "medium"),
+                confidence=q_data.get("confidence", 1.0),
+                tag_source="ai"
+            )
+            db.add(q_tag)
 
     db.commit()
 
     # Handle Answer Key status matching
-    # If the user uploaded/input a manual key, apply it
     if answer_key_text:
         try:
             manual_key = json.loads(answer_key_text)
@@ -128,17 +144,17 @@ async def upload_paper(
         except Exception as e:
             logger.error(f"Failed to apply manual key: {str(e)}")
             paper.answer_key_status = "pending"
-    elif extracted_key:
+    elif extracted_key and len(extracted_key) > 0:
         apply_key_to_paper(db, paper.id, extracted_key)
         paper.answer_key_status = "matched"
     else:
         # Check if all questions have correct answers, otherwise pending
-        all_answered = db.query(Question).filter(Question.paper_id == paper.id, Question.correct_answer == None).count() == 0
-        paper.answer_key_status = "matched" if all_answered else "pending"
+        all_answered = db.query(Question).filter(Question.paper_id == paper.id, (Question.correct_answer == None) | (Question.correct_answer == "")).count() == 0
+        paper.answer_key_status = "matched" if (all_answered and len(questions_list) > 0) else "pending"
 
     db.commit()
 
-    # Trigger async subject fallback tagging so the user can use it immediately for tests
+    # Trigger async subject fallback tagging so any untagged question gets a subject
     background_tasks.add_task(run_subject_only_tagging_fallback_task)
     # Trigger background batch tagging for fuller taxonomy
     background_tasks.add_task(run_batch_tagging_task)
@@ -157,9 +173,29 @@ def apply_key_to_paper(db: Session, paper_id: int, key_dict: Dict[str, str]):
             q_num = int(q_num_str)
             q = db.query(Question).filter(Question.paper_id == paper_id, Question.question_number == q_num).first()
             if q:
-                q.correct_answer = str(ans).strip()
+                clean_ans = str(ans).strip().upper()
+                if clean_ans in ['1', '2', '3', '4']:
+                    clean_ans = chr(ord('A') + int(clean_ans) - 1)
+                q.correct_answer = clean_ans
+                
+                # Check if question can be promoted out of needs_review
+                if q.tagging_status == "needs_review":
+                    # Check if options are valid for MCQ
+                    opts = json.loads(q.options) if q.options else None
+                    if q.question_type == "MCQ" and (not opts or len(opts) != 4):
+                        pass # keep in needs_review due to malformed options
+                    else:
+                        # Check tags
+                        tag = db.query(QuestionTag).filter(QuestionTag.question_id == q.id).first()
+                        if tag and tag.subject and tag.chapter:
+                            q.tagging_status = "fully_tagged"
+                        elif tag and tag.subject:
+                            q.tagging_status = "subject_tagged"
+                        else:
+                            q.tagging_status = "untagged"
         except ValueError:
             continue
+    db.commit()
 
 @app.post("/api/papers/{paper_id}/answer-key")
 def submit_answer_key(paper_id: int, req: AnswerKeySubmitRequest, db: Session = Depends(get_db)):
@@ -171,6 +207,7 @@ def submit_answer_key(paper_id: int, req: AnswerKeySubmitRequest, db: Session = 
     paper.answer_key_status = "matched"
     db.commit()
     return {"status": "success", "message": "Answer key matched successfully."}
+
 
 # ----------------------------------------------------
 # LIBRARY ENDPOINTS
