@@ -378,9 +378,18 @@ def trigger_tagger(background_tasks: BackgroundTasks):
 def generate_test(req: TestGenerateRequest, db: Session = Depends(get_db)):
     """
     Generates a mock test session.
-    A question must have at least a Subject tag to be CBT-eligible.
+    A question must have a verified correct_answer, valid options, not be in needs_review/error,
+    and have at least a Subject tag to be CBT-eligible.
     """
     all_questions = []
+
+    # Helper filter for CBT test eligibility
+    def apply_cbt_eligibility(q):
+        return q.filter(
+            Question.correct_answer != None,
+            Question.correct_answer != "",
+            Question.tagging_status.notin_(["needs_review", "error"])
+        )
 
     # Case A: Advanced Question Count Filter (subjects specified individually)
     if req.subject_limits:
@@ -389,6 +398,7 @@ def generate_test(req: TestGenerateRequest, db: Session = Depends(get_db)):
         
         for subj, limit_cnt in active_limits.items():
             query = db.query(Question).join(QuestionTag).filter(QuestionTag.subject == subj)
+            query = apply_cbt_eligibility(query)
             
             # Apply common filters
             if req.chapters:
@@ -414,6 +424,7 @@ def generate_test(req: TestGenerateRequest, db: Session = Depends(get_db)):
     # Case B: Standard filters with multiselect subjects and difficulties
     else:
         query = db.query(Question).join(QuestionTag).filter(QuestionTag.subject != None)
+        query = apply_cbt_eligibility(query)
         
         # Apply subjects multiselect or single select
         if req.subjects:
@@ -444,6 +455,7 @@ def generate_test(req: TestGenerateRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No matching CBT-eligible questions found.")
         
     return [QuestionResponse.from_orm(q) for q in all_questions]
+
 
 @app.post("/api/tests/submit", response_model=TestSubmissionResult)
 async def submit_test(
