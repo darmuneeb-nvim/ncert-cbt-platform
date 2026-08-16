@@ -12,6 +12,7 @@ import {
   Eye, 
   BookOpen 
 } from "lucide-react";
+import FormattedQuestion from "../components/FormattedQuestion";
 
 export default function InAppReview() {
   const [activeTab, setActiveTab] = useState<"flashcards" | "skipped" | "history">("flashcards");

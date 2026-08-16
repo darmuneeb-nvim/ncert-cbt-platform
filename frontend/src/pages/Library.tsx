@@ -698,16 +698,20 @@ export default function Library() {
               {/* Question Text block */}
               <div style={{ border: "1px solid var(--border-color)", padding: "16px", borderRadius: "6px", backgroundColor: "rgba(0,0,0,0.15)", fontSize: "0.95rem" }}>
                 <div style={{ fontWeight: "600", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "8px" }}>QUESTION TEXT</div>
-                <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.5" }}>{selectedQuestion.raw_content}</div>
+                <FormattedQuestion content={selectedQuestion.raw_content} fontSize="0.95rem" />
                 
-                {/* Options display if MCQ */}
+                {/* Options display */}
                 {selectedQuestion.options && (
                   <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {JSON.parse(selectedQuestion.options).map((opt: string, idx: number) => (
-                      <div key={idx} style={{ padding: "8px 12px", backgroundColor: "var(--bg-tertiary)", borderRadius: "4px", fontSize: "0.85rem" }}>
-                        {opt}
-                      </div>
-                    ))}
+                    {JSON.parse(selectedQuestion.options).map((opt: string, idx: number) => {
+                      const optChar = String.fromCharCode(65 + idx);
+                      return (
+                        <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", backgroundColor: "var(--bg-tertiary)", borderRadius: "4px", fontSize: "0.85rem" }}>
+                          <span style={{ fontWeight: 700, color: "var(--primary)", width: "20px" }}>{optChar}.</span>
+                          <span>{opt}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
