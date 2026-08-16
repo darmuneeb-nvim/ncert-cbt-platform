@@ -207,8 +207,8 @@ export default function InAppReview() {
               )}
             </div>
             
-            <div style={{ flexGrow: "1", fontSize: "1.02rem", whiteSpace: "pre-wrap", lineHeight: "1.5" }}>
-              {currentCard.raw_content}
+            <div style={{ flexGrow: "1", fontSize: "0.95rem" }}>
+              <FormattedQuestion content={currentCard.raw_content} fontSize="0.95rem" />
             </div>
             
             {currentCard.options && (
@@ -521,9 +521,7 @@ export default function InAppReview() {
             </div>
 
             {/* Question body */}
-            <div style={{ fontSize: "1.05rem", whiteSpace: "pre-wrap", lineHeight: "1.5" }}>
-              {selectedSkipped.raw_content}
-            </div>
+            <FormattedQuestion content={selectedSkipped.raw_content} fontSize="1.02rem" />
 
             {/* Options display */}
             {selectedSkipped.options && (
@@ -756,8 +754,8 @@ export default function InAppReview() {
                       </div>
                     </div>
 
-                    <div style={{ fontSize: "0.95rem", whiteSpace: "pre-wrap", lineHeight: "1.5", color: "var(--text-primary)" }}>
-                      {sub.raw_content}
+                    <div style={{ fontSize: "0.92rem", color: "var(--text-primary)" }}>
+                      <FormattedQuestion content={sub.raw_content} fontSize="0.92rem" />
                     </div>
 
                     {/* Options list */}

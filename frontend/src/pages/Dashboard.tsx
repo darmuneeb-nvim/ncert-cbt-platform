@@ -14,6 +14,7 @@ import {
   Check, 
   Eye 
 } from "lucide-react";
+import FormattedQuestion from "../components/FormattedQuestion";
 
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -661,8 +662,8 @@ export default function Dashboard() {
                       <span style={{ fontSize: "0.75rem", color: "var(--primary)", fontWeight: "600" }}>{activeReviewQuestion.tags?.subject || "General"}</span>
                     </div>
                     
-                    <div style={{ flexGrow: "1", fontSize: "1rem", whiteSpace: "pre-wrap", lineHeight: "1.4" }}>
-                      {activeReviewQuestion.raw_content}
+                    <div style={{ flexGrow: "1", fontSize: "0.95rem" }}>
+                      <FormattedQuestion content={activeReviewQuestion.raw_content} fontSize="0.95rem" />
                     </div>
                     
                     {activeReviewQuestion.options && (
