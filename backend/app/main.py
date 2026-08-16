@@ -303,15 +303,35 @@ def update_question_tags(question_id: int, req: QuestionTagUpdate, db: Session =
         tag = QuestionTag(question_id=question_id)
         db.add(tag)
 
-    tag.subject = req.subject
-    tag.chapter = req.chapter
-    tag.concept = req.concept
-    tag.difficulty = req.difficulty
+    if req.subject is not None:
+        tag.subject = req.subject
+    if req.chapter is not None:
+        tag.chapter = req.chapter
+    if req.concept is not None:
+        tag.concept = req.concept
+    if req.difficulty is not None:
+        tag.difficulty = req.difficulty
+    if req.correct_answer is not None:
+        clean_ans = req.correct_answer.strip().upper()
+        if clean_ans in ['1', '2', '3', '4']:
+            clean_ans = chr(ord('A') + int(clean_ans) - 1)
+        q.correct_answer = clean_ans
+    if req.explanation is not None:
+        q.explanation = req.explanation
+        
     tag.tag_source = "manual"
     tag.confidence = 1.0
     tag.updated_at = datetime.utcnow()
     
-    q.tagging_status = "fully_tagged"
+    if q.correct_answer and tag.subject and tag.chapter:
+        q.tagging_status = "fully_tagged"
+    elif q.correct_answer and tag.subject:
+        q.tagging_status = "subject_tagged"
+    elif not q.correct_answer:
+        q.tagging_status = "needs_review"
+    else:
+        q.tagging_status = "untagged"
+        
     db.commit()
     db.refresh(q)
     return QuestionResponse.from_orm(q)

@@ -16,6 +16,8 @@ class QuestionTagUpdate(BaseModel):
     chapter: Optional[str] = None
     concept: Optional[str] = None
     difficulty: Optional[str] = None
+    correct_answer: Optional[str] = None
+    explanation: Optional[str] = None
 
 class QuestionTagResponse(QuestionTagBase):
     id: int
