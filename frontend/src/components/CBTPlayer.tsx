@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { api, API_BASE_URL } from "../api";
 import type { Question, TestSubmissionResult, Paper } from "../api";
-import { Clock, Award, AlertTriangle, Eye, Zap, Sparkles, BookOpen, Layers, Target, ChevronDown, ChevronUp, Check, Play } from "lucide-react";
+import { Clock, Award, AlertTriangle, Eye, Zap, ChevronDown, ChevronUp, Play } from "lucide-react";
 import confetti from "canvas-confetti";
 import { NCERT_TAXONOMY } from "../taxonomy";
 import FormattedQuestion from "./FormattedQuestion";
