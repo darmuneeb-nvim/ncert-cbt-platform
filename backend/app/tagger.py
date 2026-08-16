@@ -67,9 +67,11 @@ def run_batch_tagging(db: Session, batch_size: int = 20) -> int:
             "options": json.loads(q.options) if q.options else None
         })
 
-    import google.generativeai as genai
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    from .parser import get_gemini_model
+    model = get_gemini_model()
+    if not model:
+        logger.warning("Failed to initialize Gemini model. Skipping AI tagging.")
+        return 0
 
     prompt = f"""
 You are an AI tagging engine for JEE/NEET questions.
