@@ -42,6 +42,25 @@ def get_latex_ocr():
             return None
     return latex_ocr_model
 
+def get_gemini_model(api_key: str = "", system_instruction: Optional[str] = None):
+    """Initializes and returns an active Gemini GenerativeModel instance."""
+    key = api_key or settings.gemini_api_key
+    if not key:
+        return None
+    import google.generativeai as genai
+    genai.configure(api_key=key)
+    
+    # Prioritize active models
+    candidates = ["gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
+    for model_name in candidates:
+        try:
+            if system_instruction:
+                return genai.GenerativeModel(model_name, system_instruction=system_instruction)
+            return genai.GenerativeModel(model_name)
+        except Exception:
+            continue
+    return genai.GenerativeModel("gemini-3.7-flash")
+
 def is_equation_heavy(text: str) -> bool:
     if not text or not text.strip():
         return False
@@ -55,7 +74,7 @@ def is_equation_heavy(text: str) -> bool:
 
 def clean_junk_advertisement_lines(text: str) -> str:
     if not text:
-        return text
+        return ""
     lines = text.split("\n")
     cleaned_lines = []
     for line in lines:
@@ -69,11 +88,127 @@ def clean_junk_advertisement_lines(text: str) -> str:
     res = "\n".join(cleaned_lines).strip()
     return res
 
+def clean_option_text(opt: str) -> str:
+    """Strips leading option bullets like (a), (A), a., 1., etc. to prevent double labeling."""
+    if not opt:
+        return ""
+    cleaned = clean_junk_advertisement_lines(opt).strip()
+    # Strip (A), (1), (a), A., 1., a., A), 1) prefixes
+    cleaned = re.sub(r'^\s*(?:\([1-4A-Da-d]\)|[1-4A-Da-d][\.\)]|\b[1-4A-Da-d]\b[\.\)])\s*', '', cleaned)
+    return cleaned.strip()
+
+def parse_answer_key_grid(text: str) -> Dict[str, str]:
+    """
+    Parses horizontal or tabular answer key grids where question numbers and
+    answer options are arranged in alternating rows or columns (e.g., NEET/JEE style:
+    Row 1: 1 2 3 4 5 ... 17
+    Row 2: a b b d a ... d).
+    """
+    key: Dict[str, str] = {}
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    
+    # 1. Check alternating lines: numbers row followed by answers row
+    for i in range(len(lines) - 1):
+        l1 = lines[i]
+        l2 = lines[i + 1]
+        
+        nums = re.findall(r'\b\d+\b', l1)
+        anss = re.findall(r'\b[a-dA-D1-4]\b', l2)
+        
+        if nums and anss and len(nums) == len(anss):
+            int_nums = [int(n) for n in nums]
+            if len(int_nums) >= 2 and all(int_nums[j] < int_nums[j+1] for j in range(len(int_nums)-1)):
+                for n, a in zip(nums, anss):
+                    val = a.upper()
+                    if val in ['1', '2', '3', '4']:
+                        val = chr(ord('A') + int(val) - 1)
+                    key[str(n)] = val
+
+    # 2. Check standard inline/regex patterns (e.g. 1-A, 1. B, Q1 (C))
+    try:
+        key_pattern = r'(?:Q|Question|Q\.)?\s*(\d+)\s*[\.\-\:\s\n]+\s*(?:\(([A-Da-d1-4])\)|([A-Da-d1-4]))(?=\s|$|\n)'
+        regex_matches = re.finditer(key_pattern, text)
+        for m in regex_matches:
+            q_num = str(int(m.group(1)))
+            raw_ans = (m.group(2) or m.group(3)).upper()
+            if raw_ans in ['1', '2', '3', '4']:
+                raw_ans = chr(ord('A') + int(raw_ans) - 1)
+            if q_num not in key:
+                key[q_num] = raw_ans
+    except Exception as e:
+        logger.error(f"Regex answer key parsing error: {e}")
+        
+    return key
+
+def extract_answer_key(pages: List[str], total_text: str) -> Dict[str, str]:
+    """
+    Scans pages for Answer Key markers, runs grid and regex extraction,
+    and falls back to Gemini structured extraction if needed.
+    """
+    answer_key: Dict[str, str] = {}
+    answer_key_text = ""
+    
+    # Locate answer key pages
+    for idx, p_text in enumerate(pages):
+        lower_p = p_text.lower()
+        if "answer key" in lower_p or "answer-key" in lower_p or ("answers" in lower_p and "hints & solutions" not in lower_p and idx > len(pages)/2):
+            logger.info(f"Found Answer Key page marker on Page {idx + 1}")
+            answer_key_text += p_text + "\n"
+            if idx + 1 < len(pages):
+                answer_key_text += pages[idx + 1] + "\n"
+            break
+
+    if not answer_key_text:
+        answer_key_text = "\n".join(pages[-4:]) if len(pages) >= 4 else total_text
+
+    # 1. Attempt grid and regex parsing first
+    answer_key = parse_answer_key_grid(answer_key_text)
+    logger.info(f"Local grid/regex answer key parsing extracted {len(answer_key)} entries.")
+
+    # 2. If nothing or very few answers found, use Gemini Flash
+    if len(answer_key) < 5 and settings.gemini_api_key:
+        try:
+            model = get_gemini_model()
+            if model:
+                key_prompt = f"""
+Analyze the following text block from an Indian entrance exam paper (JEE/NEET) and extract the Answer Key.
+Extract all mappings of Question Number to Correct Answer option (e.g. 1 -> "A", 2 -> "C").
+If options are numbers (1, 2, 3, 4), convert them to letters (1->A, 2->B, 3->C, 4->D).
+
+Return the result STRICTLY as a JSON object:
+{{
+  "answer_key": {{
+    "1": "A",
+    "2": "B"
+  }}
+}}
+
+Text Block:
+{answer_key_text}
+"""
+                key_response = model.generate_content(
+                    key_prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                key_data = json.loads(key_response.text)
+                gemini_key = key_data.get("answer_key", {})
+                if gemini_key:
+                    for k, v in gemini_key.items():
+                        norm_v = str(v).strip().upper()
+                        if norm_v in ['1', '2', '3', '4']:
+                            norm_v = chr(ord('A') + int(norm_v) - 1)
+                        answer_key[str(k)] = norm_v
+                    logger.info(f"Gemini extracted answer key with {len(gemini_key)} items.")
+        except Exception as e:
+            logger.error(f"Gemini answer key extraction failed: {str(e)}")
+
+    return answer_key
+
 def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
     """
     Parses a PDF mock paper. Extracts page text (running OCR fallback if needed),
-    locates the answer key by querying the final pages, and parses questions
-    page-group by page-group to avoid token size limits and number extraction errors.
+    locates the answer key, and uses Gemini Flash structured output to parse questions
+    with direct subject, topic, difficulty, and confidence scoring.
     """
     logger.info(f"Beginning PDF extraction pipeline for: {file_path} (Paper ID: {paper_id})")
     doc = fitz.open(file_path)
@@ -123,25 +258,17 @@ def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
             try:
                 images = convert_from_path(file_path)
                 pages = []
-                
-                # Check if we should initialize LatexOCR
                 latex_ocr = get_latex_ocr()
                 
                 for idx, img in enumerate(images):
                     logger.info(f"OCRing page {idx + 1}/{len(images)}...")
                     p_text = f"\n--- Page {idx + 1} ---\n"
-                    
-                    # Run standard Tesseract OCR first to get plain text
                     raw_ocr_text = pytesseract.image_to_string(img)
                     
-                    # If LatexOCR is available and page is equation-heavy:
                     if latex_ocr and is_equation_heavy(raw_ocr_text):
                         logger.info(f"Page {idx + 1} is flagged as equation-heavy. Running LatexOCR enhancement...")
                         try:
-                            # Use Tesseract's image_to_data to find layout bounding boxes
                             data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-                            
-                            # Group words by block and line numbers to form line coordinates
                             line_words = {}
                             for w_idx in range(len(data['text'])):
                                 word_txt = data['text'][w_idx].strip()
@@ -160,14 +287,10 @@ def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
                                     })
                             
                             page_lines = []
-                            # Process lines in order of their block and line ID
                             for key in sorted(line_words.keys()):
                                 words = line_words[key]
                                 line_text = " ".join([w['text'] for w in words])
-                                
-                                # Check if individual line is equation-heavy
                                 if is_equation_heavy(line_text) and len(line_text) > 2:
-                                    # Crop the line image with small padding
                                     min_left = max(0, min([w['left'] for w in words]) - 8)
                                     min_top = max(0, min([w['top'] for w in words]) - 8)
                                     max_right = min(img.width, max([w['left'] + w['width'] for w in words]) + 8)
@@ -176,16 +299,13 @@ def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
                                     if max_right > min_left and max_bottom > min_top:
                                         line_crop = img.crop((min_left, min_top, max_right, max_bottom))
                                         try:
-                                            # Transcribe line to LaTeX
                                             latex_val = latex_ocr(line_crop)
                                             if latex_val and latex_val.strip():
-                                                # Wrap in LaTeX notation
                                                 line_text = f"${latex_val.strip()}$"
                                         except Exception as ocr_err:
                                             logger.error(f"LatexOCR line transcription failed: {ocr_err}")
                                 
                                 page_lines.append(line_text)
-                            
                             p_text += "\n".join(page_lines)
                         except Exception as data_err:
                             logger.error(f"Failed image_to_data layout parsing: {data_err}")
@@ -202,155 +322,78 @@ def parse_pdf_to_questions(file_path: str, paper_id: int) -> Dict[str, Any]:
         else:
             logger.warning("OCR required but pytesseract or pdf2image is not installed.")
 
-    # Step 1: Scan for answer key block specifically on the last 4 pages
-    answer_key = {}
-    answer_key_text = ""
-    
-    # Let's search all pages for "Answer Key" block to extract it directly
-    for idx, p_text in enumerate(pages):
-        lower_p = p_text.lower()
-        if "answer key" in lower_p or "answer-key" in lower_p or ("answers" in lower_p and "hints & solutions" not in lower_p and idx > len(pages)/2):
-            logger.info(f"Found Answer Key page marker on Page {idx + 1}")
-            answer_key_text += p_text + "\n"
-            if idx + 1 < len(pages):
-                answer_key_text += pages[idx + 1] + "\n"
-            break
+    # Step 1: Scan & Extract Answer Key
+    answer_key = extract_answer_key(pages, total_text)
 
-    if not answer_key_text:
-        logger.info("No explicit Answer Key page marker found. Defaulting to final 4 pages.")
-        answer_key_text = "\n".join(pages[-4:]) if len(pages) >= 4 else total_text
-    
-    # Attempt local regex extraction first
-    try:
-        key_pattern = r'(?:Q|Question|Q\.)?\s*(\d+)\s*[\.\-\s\n]*\s*(?:\(([A-D])\)|([A-D]))'
-        regex_matches = re.finditer(key_pattern, answer_key_text, re.IGNORECASE)
-        for m in regex_matches:
-            q_num = m.group(1)
-            ans = m.group(2) or m.group(3)
-            answer_key[q_num] = ans.upper()
-        logger.info(f"Local regex answer key extraction found {len(answer_key)} entries.")
-    except Exception as e:
-        logger.error(f"Local regex answer key extraction failed: {str(e)}")
-
-    # If local regex found nothing and API key is present, try Gemini
-    if not answer_key and settings.gemini_api_key:
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.gemini_api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            key_prompt = f"""
-Analyze the following text block from the end of an Indian mock test paper (JEE/NEET) and extract the Answer Key.
-Search specifically for mapping of Question Number to Correct Answer option (e.g., 1-B, 2-C, 3. D or in tables).
-
-Return the result STRICTLY as a JSON object with this schema:
-{{
-  "answer_key": {{
-    "1": "A",
-    "2": "C"
-  }}
-}}
-
-Text Block:
-{answer_key_text}
-"""
-            key_response = model.generate_content(
-                key_prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
-            key_data = json.loads(key_response.text)
-            gemini_key = key_data.get("answer_key", {})
-            if gemini_key:
-                answer_key.update(gemini_key)
-            logger.info(f"Successfully extracted answer key via Gemini with {len(gemini_key)} items.")
-        except Exception as e:
-            logger.error(f"Gemini answer key extraction failed: {str(e)}")
-
-    # Step 2: Extract questions page-by-page
-    # Stop collecting question pages when we hit standard Solutions/Answer Key headers
+    # Step 2: Extract questions page-by-page (grouping in batches)
     question_pages = []
     stop_keywords = ["hints & solutions", "detailed solutions", "text solution", "answer key", "answer-key", "answers & explanations"]
     
     for idx, p_text in enumerate(pages):
         lower_p = p_text.lower()
         if any(kw in lower_p for kw in stop_keywords):
-            logger.info(f"Detected Solutions/Key section on Page {idx + 1} ({p_text[:50].strip()}). Stopping question page collection.")
+            logger.info(f"Detected Solutions/Key section on Page {idx + 1}. Stopping question collection.")
             break
         question_pages.append(p_text)
         
     if not question_pages:
-        # Fallback to all pages if filter accidentally emptied the pages
         question_pages = pages
 
     all_questions = []
-    group_size = 5
+    group_size = 4
     page_groups = [question_pages[i:i + group_size] for i in range(0, len(question_pages), group_size)]
     
-    if settings.gemini_api_key:
-        try:
-            import google.generativeai as genai
-            from PIL import Image
-            genai.configure(api_key=settings.gemini_api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+    model = get_gemini_model()
+    if model and settings.gemini_api_key:
+        from PIL import Image
+        for idx, group in enumerate(page_groups):
+            logger.info(f"Parsing page group {idx + 1}/{len(page_groups)} via Gemini...")
+            group_text = "\n".join(group)
             
-            # Recreate image folder path to match group files
-            images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "images", f"paper_{paper_id}")
+            start_page_num = idx * group_size + 1
+            end_page_num = min(start_page_num + len(group) - 1, len(doc))
             
-            for idx, group in enumerate(page_groups):
-                logger.info(f"Parsing page group {idx + 1}/{len(page_groups)} via Gemini...")
-                group_text = "\n".join(group)
-                
-                # Determine page range of this group
-                start_page_num = idx * group_size + 1
-                end_page_num = min(start_page_num + len(group) - 1, len(doc))
-                
-                # Gather images matching this page range
-                group_images = []
-                for page_num in range(start_page_num, end_page_num + 1):
-                    prefix = f"page_{page_num}_img_"
-                    if os.path.exists(images_dir):
-                        for f_name in sorted(os.listdir(images_dir)):
-                            if f_name.startswith(prefix):
-                                group_images.append(os.path.join(images_dir, f_name))
-                
-                contents = []
-                images_manifest = ""
-                
-                if group_images:
-                    images_manifest = "The following images/diagrams from these pages are provided to you as input payloads in the request order:\n"
-                    for img_idx, img_path in enumerate(group_images):
-                        try:
-                            f_name = os.path.basename(img_path)
-                            img_obj = Image.open(img_path)
-                            contents.append(img_obj)
-                            images_manifest += f"- Payload Image {img_idx + 1} corresponds to filename: \"{f_name}\"\n"
-                        except Exception as img_err:
-                            logger.error(f"Failed to load image {img_path}: {img_err}")
-                    
-                    images_manifest += """
-If any question relies on or refers to a diagram/image provided in the request payload, you MUST map that image filename from the list above to the question's 'images' array.
-For example, if Question 3 refers to Payload Image 1, set its 'images' to ["page_1_img_0.png"] (using the exact filename matched from the list above). If no diagram belongs to the question, set 'images' to null or an empty list.
-"""
+            group_images = []
+            for page_num in range(start_page_num, end_page_num + 1):
+                prefix = f"page_{page_num}_img_"
+                if os.path.exists(images_dir):
+                    for f_name in sorted(os.listdir(images_dir)):
+                        if f_name.startswith(prefix):
+                            group_images.append(os.path.join(images_dir, f_name))
+            
+            contents = []
+            images_manifest = ""
+            if group_images:
+                images_manifest = "The following images/diagrams from these pages are provided in the payload:\n"
+                for img_idx, img_path in enumerate(group_images):
+                    try:
+                        f_name = os.path.basename(img_path)
+                        img_obj = Image.open(img_path)
+                        contents.append(img_obj)
+                        images_manifest += f"- Image {img_idx + 1}: \"{f_name}\"\n"
+                    except Exception as img_err:
+                        logger.error(f"Failed to load image {img_path}: {img_err}")
+                images_manifest += "Map matched image filenames to question 'images' array or set null if none.\n"
 
-                prompt = f"""
+            prompt = f"""
 You are an expert Indian entrance exam (JEE Main / NEET) parsing system.
-Analyze the following text from a group of pages in an exam paper and extract all questions.
+Extract all questions from the following exam paper text block.
 
 {images_manifest}
 
-For each question, extract:
-- question_number: The integer index of the question (e.g., 1, 2, 51). Pay special attention to the number written next to the question statement. Do NOT assign everything to 1.
-- raw_content: The text of the question (use markdown for clean formatting, keep chemical formulas/math equations formatted nicely).
-- question_type: Must be one of: "MCQ" | "AR" | "MATCH" | "NUMERICAL".
-- options: For MCQ and MATCH/combination questions, a list of 4 options. 
-  * IMPORTANT: Do not include option letters (A, B, C, D) or numbers (1, 2, 3, 4) or surrounding brackets in the final elements of the options array. Clean them off so they only contain the text of the options (e.g., return 'Genus', not '(A) Genus' or 'A) Genus'). This prevents double option label rendering in the player UI.
-  * MATCH type and combination questions: For questions containing a list of pairs/columns (e.g., List-I/List-II, or items A, B, C, D, E matched with I, II, III, IV, V), followed by a phrase like "Choose the correct answer from the options given below:" (or similar), and then 4 multiple-choice options showing combinations (e.g., "(1) A-II, B-I, C-V, D-III, E-IV"):
-    1. The entire list of pairs/columns AND the "Choose the correct answer..." line MUST be included in the `raw_content` as plain text/markdown.
-    2. The `options` list MUST ONLY contain the final 4 selectable combination choices, with option labels (such as (1), (2), (3), (4) or (A), (B), (C), (D)) stripped out.
-    3. Never treat individual pair items (e.g., "E. Parietal – Argemone") as options, and never merge them into the final combination options. They belong strictly in the `raw_content`.
-- correct_answer: The correct option character (A, B, C, D) if found in this text block. Otherwise null.
-- explanation: Any embedded solution explanation if found in this text block. Otherwise null.
-- images: A list of string filenames (e.g. ["page_1_img_0.png"]) matched from the provided image payload manifest if the question has an associated diagram. Otherwise null.
+Extraction Guidelines:
+1. question_number: Integer question index (e.g. 1, 2, 34).
+2. raw_content: Full question statement/stem in clean markdown formatting. Keep equations in LaTeX notation ($...$). For Match-the-Following or Statement questions, include the statements and lists in raw_content.
+3. question_type: Must be one of: "MCQ" | "AR" | "MATCH" | "NUMERICAL".
+4. options: For MCQ, list of exactly 4 option text strings.
+   * Strip off option prefixes like (a), (b), (c), (d), 1., 2., A), B) so only the pure option text remains.
+5. correct_answer: Option letter ('A', 'B', 'C', 'D') if stated or embedded. Otherwise null.
+6. explanation: Embedded solution/explanation if present. Otherwise null.
+7. subject: Must be one of: "Physics" | "Chemistry" | "Biology" | "Mathematics".
+8. chapter: Chapter or topic title from header (e.g. "Ecosystem", "Electromagnetic Induction").
+9. difficulty: "easy" (direct recall), "medium" (single-step application), or "hard" (multi-step reasoning).
+10. confidence: Float from 0.0 to 1.0 representing extraction completeness and accuracy.
+11. images: List of diagram filenames matched from manifest, or null.
 
 Return the result STRICTLY as a JSON object with this schema:
 {{
@@ -359,9 +402,13 @@ Return the result STRICTLY as a JSON object with this schema:
       "question_number": int,
       "raw_content": "string",
       "question_type": "MCQ" | "AR" | "MATCH" | "NUMERICAL",
-      "options": ["string"] or null,
+      "options": ["string", "string", "string", "string"] or null,
       "correct_answer": "string" or null,
       "explanation": "string" or null,
+      "subject": "Physics" | "Chemistry" | "Biology" | "Mathematics",
+      "chapter": "string",
+      "difficulty": "easy" | "medium" | "hard",
+      "confidence": float,
       "images": ["string"] or null
     }}
   ]
@@ -370,8 +417,8 @@ Return the result STRICTLY as a JSON object with this schema:
 Exam Paper Text Group:
 {group_text}
 """
-                contents.append(prompt)
-                
+            contents.append(prompt)
+            try:
                 response = model.generate_content(
                     contents,
                     generation_config={"response_mime_type": "application/json"}
@@ -380,27 +427,21 @@ Exam Paper Text Group:
                 questions_parsed = data.get("questions", [])
                 logger.info(f"Page group {idx + 1} yielded {len(questions_parsed)} questions.")
                 all_questions.extend(questions_parsed)
-                
-                # Sleep briefly to avoid hit rate limits
                 time.sleep(1.0)
-                
-        except Exception as e:
-            logger.error(f"Gemini batch question parsing failed: {str(e)}")
-            dummy = get_dummy_parsed_response(total_text)
-            all_questions = dummy.get("questions", [])
+            except Exception as e:
+                logger.error(f"Gemini batch extraction failed on group {idx + 1}: {str(e)}")
+                dummy = get_dummy_parsed_response(group_text)
+                all_questions.extend(dummy.get("questions", []))
     else:
-        # Fallback to regex
         dummy = get_dummy_parsed_response(total_text)
         all_questions = dummy.get("questions", [])
 
-    # Step 3: Extract Explanations from the solutions page text (if solutions pages were skipped)
+    # Step 3: Extract Explanations from solutions pages if present
     explanations = {}
     solutions_start_idx = len(question_pages)
     if solutions_start_idx < len(pages):
         solutions_text = "\n".join(pages[solutions_start_idx:])
-        logger.info(f"Extracting explanations from solutions section (pages {solutions_start_idx + 1} to {len(pages)})...")
-        
-        # Try local regex extraction first
+        logger.info("Extracting explanations from solutions section...")
         try:
             pattern = r'(?:^|\n)\s*(?:Q|Question|Q\.)?\s*(\d+)\s*\n*\s*(?:Text Solution|Solution|Explanation):'
             matches = list(re.finditer(pattern, solutions_text, re.IGNORECASE))
@@ -409,83 +450,106 @@ Exam Paper Text Group:
                 start_idx = match.end()
                 end_idx = matches[i+1].start() if i + 1 < len(matches) else len(solutions_text)
                 expl_content = solutions_text[start_idx:end_idx].strip()
-                # Clean footers
-                if "Android App" in expl_content:
-                    expl_content = expl_content.split("Android App")[0].strip()
-                explanations[q_num] = expl_content
-            logger.info(f"Local regex explanations extraction found {len(explanations)} entries.")
+                explanations[q_num] = clean_junk_advertisement_lines(expl_content)
         except Exception as e:
-            logger.error(f"Local regex explanations extraction failed: {str(e)}")
+            logger.error(f"Local explanations extraction error: {e}")
 
-        # If local regex found nothing and API key is present, try Gemini
-        if not explanations and settings.gemini_api_key:
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=settings.gemini_api_key)
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                
-                expl_prompt = f"""
-Analyze the following text block containing Solutions and Explanations for the exam questions.
-Extract the explanation text for each question number.
-
-Return the result STRICTLY as a JSON object with this schema:
-{{
-  "explanations": {{
-    "1": "Explanation for question 1...",
-    "2": "Explanation for question 2..."
-  }}
-}}
-
-Solutions Text:
-{solutions_text[:40000]}
-"""
-                expl_response = model.generate_content(
-                    expl_prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                expl_data = json.loads(expl_response.text)
-                gemini_expl = expl_data.get("explanations", {})
-                if gemini_expl:
-                    explanations.update(gemini_expl)
-                logger.info(f"Successfully extracted {len(gemini_expl)} explanations via Gemini.")
-            except Exception as e:
-                logger.error(f"Gemini explanations extraction failed: {str(e)}")
-
-    # Map explanations back to questions and clean content
+    # Step 4: Post-Processing, Answer Key Matching, and Extraction Review Gate
+    processed_questions = []
+    seen_q_nums = set()
+    
     for q_data in all_questions:
-        q_num_str = str(q_data.get("question_number"))
-        if q_num_str in explanations:
-            q_data["explanation"] = clean_junk_advertisement_lines(explanations[q_num_str])
+        q_num = q_data.get("question_number")
+        if q_num in seen_q_nums or not q_num:
+            continue
+        seen_q_nums.add(q_num)
+        q_num_str = str(q_num)
         
+        # Attach explanation if found
+        if q_num_str in explanations and not q_data.get("explanation"):
+            q_data["explanation"] = clean_junk_advertisement_lines(explanations[q_num_str])
+
+        # Attach answer key if not already embedded
+        corr_ans = q_data.get("correct_answer")
+        if not corr_ans and q_num_str in answer_key:
+            corr_ans = answer_key[q_num_str]
+            q_data["correct_answer"] = corr_ans
+        elif corr_ans:
+            corr_ans = str(corr_ans).strip().upper()
+            if corr_ans in ['1', '2', '3', '4']:
+                corr_ans = chr(ord('A') + int(corr_ans) - 1)
+            q_data["correct_answer"] = corr_ans
+
         # Clean raw question content
         q_data["raw_content"] = clean_junk_advertisement_lines(q_data.get("raw_content", ""))
+
+        # Clean and validate options list
+        raw_opts = q_data.get("options")
+        clean_opts = None
+        if raw_opts and isinstance(raw_opts, list):
+            clean_opts = [clean_option_text(opt) for opt in raw_opts if str(opt).strip()]
+            q_data["options"] = clean_opts
+
+        # REVIEW & ERROR GATE EVALUATION
+        # Rules:
+        # 1. Must have correct_answer
+        # 2. For MCQ: must have exactly 4 options (if >4 or <4, flagged)
+        # 3. Confidence must be >= 0.7
+        # 4. raw_content must be meaningful
+        q_type = q_data.get("question_type", "MCQ")
+        confidence = float(q_data.get("confidence", 1.0) or 1.0)
         
-        # Clean options list if any
-        if q_data.get("options"):
-            q_data["options"] = [clean_junk_advertisement_lines(opt) for opt in q_data["options"]]
+        has_error = False
+        error_reasons = []
         
+        if not q_data.get("correct_answer"):
+            has_error = True
+            error_reasons.append("missing_answer")
+            
+        if q_type == "MCQ":
+            if not clean_opts or len(clean_opts) != 4:
+                has_error = True
+                error_reasons.append(f"invalid_options_count_{len(clean_opts) if clean_opts else 0}")
+                
+        if len(q_data.get("raw_content", "")) < 10:
+            has_error = True
+            error_reasons.append("empty_or_short_question_text")
+            
+        if confidence < 0.7:
+            error_reasons.append("low_confidence")
+
+        # Assign tagging / review status
+        if has_error or "low_confidence" in error_reasons:
+            q_data["tagging_status"] = "needs_review"
+        elif q_data.get("subject") and q_data.get("chapter"):
+            q_data["tagging_status"] = "fully_tagged"
+        elif q_data.get("subject"):
+            q_data["tagging_status"] = "subject_tagged"
+        else:
+            q_data["tagging_status"] = "untagged"
+
+        q_data["error_reasons"] = error_reasons
+        processed_questions.append(q_data)
+
+    processed_questions.sort(key=lambda x: int(x.get("question_number", 0)))
+
     return {
-        "questions": all_questions,
+        "questions": processed_questions,
         "answer_key": answer_key,
         "is_ocr": is_ocr
     }
 
 def get_dummy_parsed_response(raw_text: str) -> Dict[str, Any]:
     """
-    Smarter fallback parser. Looks only for valid start-of-line numbering
-    and deduplicates numbers to avoid matching option bullets as new questions.
+    Regex-based fallback parser for question extraction.
     """
-    logger.info("Generating regex-based dummy parsing...")
+    logger.info("Generating regex-based fallback parsing...")
     questions = []
     
-    # Matches:
-    # 1. Q1 or Question 1 followed by newline or dot/parenthesis/space
-    # 2. Number followed by dot/parenthesis/colon/dash and space (avoiding page/other numbers)
     pattern = r'(?:(?:^|\n)\s*(?:Q|Question|Q\.)\s*(\d+)(?:[\.\)\s\n]|$))|(?:(?:^|\n)\s*(\d+)[\.\)\:-]\s+)'
     matches = re.finditer(pattern, raw_text, re.IGNORECASE)
     match_list = list(matches)
     
-    # Filter duplicate question numbers
     seen_numbers = set()
     filtered_matches = []
     for match in match_list:
@@ -500,67 +564,26 @@ def get_dummy_parsed_response(raw_text: str) -> Dict[str, Any]:
         end_idx = filtered_matches[i+1].start() if i + 1 < len(filtered_matches) else len(raw_text)
         
         q_text = raw_text[start_idx:end_idx].strip()
-        
-        # Extrapolate option contents (A, B, C, D)
         options = []
-        combination_parsed = False
-        q_type = "MCQ"
         
-        # Check if the question contains the special combination pattern:
-        # A list of pairs followed by "Choose the correct answer..." and then combination options
-        match_pattern = r"(Choose the correct answer from the options given below|Choose the correct option)"
-        match_search = re.search(match_pattern, q_text, re.IGNORECASE)
-        if match_search:
-            split_idx = match_search.start()
-            stem_part = q_text[:split_idx].strip()
-            choose_line = match_search.group(0)
-            options_part = q_text[split_idx + len(choose_line):].strip()
-            
-            # The options in options_part can be separated by (1)/(2)/(3)/(4) or (A)/(B)/(C)/(D) or similar
-            opt_delims = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([1-4A-Da-d])\)|([1-4A-Da-d])[\)\.])(?=\s+|$)', options_part, re.IGNORECASE))
-            if len(opt_delims) >= 4:
-                for j, delim in enumerate(opt_delims[:4]):
-                    o_start = delim.start()
-                    o_end = opt_delims[j+1].start() if j + 1 < len(opt_delims) else len(options_part)
-                    opt_str = options_part[o_start:o_end].strip()
-                    # Clean the option prefix, e.g. (1) A-I... -> A-I... or (A) A-I... -> A-I...
-                    opt_str = re.sub(r'^\s*(?:\([1-4A-Da-d]\)|[1-4A-Da-d][\)\.])\s*', '', opt_str)
-                    options.append(clean_junk_advertisement_lines(opt_str))
-                q_text = stem_part + "\n" + choose_line
-                combination_parsed = True
-                q_type = "MATCH"
-
-        if not combination_parsed:
-            opt_matches = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([A-Da-d])\)|([A-Da-d])[\)\.])(?=\s+|$)', q_text, re.IGNORECASE))
-            if opt_matches:
-                is_match_question = any(kw in q_text.lower() for kw in ["match list", "list-i", "list - i", "list-ii", "list - ii", "match the following"])
-                
-                # If Match Column layout and we matched both columns and choices, only grab final choices
-                if is_match_question and len(opt_matches) > 4:
-                    option_matches = opt_matches[-4:]
-                else:
-                    option_matches = opt_matches
-
-                for j, opt_match in enumerate(option_matches):
-                    o_start = opt_match.start()
-                    o_end = option_matches[j+1].start() if j + 1 < len(option_matches) else len(q_text)
-                    opt_str = q_text[o_start:o_end].strip()
-                    # Clean prefix parentheses standardizing e.g., (A) Genus -> A) Genus
-                    opt_str = re.sub(r'^\(([A-Da-d])\)\s*', r'\1) ', opt_str)
-                    options.append(clean_junk_advertisement_lines(opt_str))
-                    
-                # Clean original question block of option texts (going up to first option choice match)
-                q_text = q_text[:option_matches[0].start()].strip()
-            else:
-                q_type = "NUMERICAL"
+        opt_matches = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([A-Da-d1-4])\)|([A-Da-d1-4])[\)\.])(?=\s+|$)', q_text, re.IGNORECASE))
+        if opt_matches and len(opt_matches) >= 4:
+            opt_slices = opt_matches[-4:]
+            for j, opt_match in enumerate(opt_slices):
+                o_start = opt_match.start()
+                o_end = opt_slices[j+1].start() if j + 1 < len(opt_slices) else len(q_text)
+                opt_str = clean_option_text(q_text[o_start:o_end])
+                options.append(opt_str)
+            q_text = q_text[:opt_slices[0].start()].strip()
             
         questions.append({
             "question_number": q_num,
-            "raw_content": q_text or f"Question details {q_num}",
-            "question_type": q_type if combination_parsed else ("MCQ" if options else "NUMERICAL"),
+            "raw_content": clean_junk_advertisement_lines(q_text) or f"Question details {q_num}",
+            "question_type": "MCQ" if options else "NUMERICAL",
             "options": options if options else None,
             "correct_answer": None,
-            "explanation": None
+            "explanation": None,
+            "confidence": 0.6
         })
         
     return {
