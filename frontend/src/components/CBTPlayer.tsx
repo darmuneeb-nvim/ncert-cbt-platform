@@ -756,10 +756,6 @@ export default function CBTPlayer() {
       </div>
     );
   }
-        </div>
-      </div>
-    );
-  }
 
   // ----------------------------------------------------
   // SUBMISSION REPORT CARD LAYOUT (POST-TEST)
