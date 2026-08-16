@@ -565,26 +565,52 @@ def get_dummy_parsed_response(raw_text: str) -> Dict[str, Any]:
         
         q_text = raw_text[start_idx:end_idx].strip()
         options = []
+        combination_parsed = False
+        q_type = "MCQ"
         
-        opt_matches = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([A-Da-d1-4])\)|([A-Da-d1-4])[\)\.])(?=\s+|$)', q_text, re.IGNORECASE))
-        if opt_matches and len(opt_matches) >= 4:
-            opt_slices = opt_matches[-4:]
-            for j, opt_match in enumerate(opt_slices):
-                o_start = opt_match.start()
-                o_end = opt_slices[j+1].start() if j + 1 < len(opt_slices) else len(q_text)
-                opt_str = clean_option_text(q_text[o_start:o_end])
-                options.append(opt_str)
-            q_text = q_text[:opt_slices[0].start()].strip()
+        # Check if the question contains match combination pattern
+        match_pattern = r"(Choose the correct answer from the options given below|Choose the correct option)"
+        match_search = re.search(match_pattern, q_text, re.IGNORECASE)
+        if match_search:
+            split_idx = match_search.start()
+            stem_part = q_text[:split_idx].strip()
+            choose_line = match_search.group(0)
+            options_part = q_text[split_idx + len(choose_line):].strip()
+            
+            opt_delims = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([1-4A-Da-d])\)|([1-4A-Da-d])[\)\.])(?=\s+|$)', options_part, re.IGNORECASE))
+            if len(opt_delims) >= 4:
+                for j, delim in enumerate(opt_delims[:4]):
+                    o_start = delim.start()
+                    o_end = opt_delims[j+1].start() if j + 1 < len(opt_delims) else len(options_part)
+                    opt_str = clean_option_text(options_part[o_start:o_end])
+                    options.append(opt_str)
+                q_text = stem_part + "\n" + choose_line
+                combination_parsed = True
+                q_type = "MATCH"
+
+        if not combination_parsed:
+            opt_matches = list(re.finditer(r'(?:^|\n|\s{2,})(?:\(([A-Da-d1-4])\)|([A-Da-d1-4])[\)\.])(?=\s+|$)', q_text, re.IGNORECASE))
+            if opt_matches and len(opt_matches) >= 4:
+                opt_slices = opt_matches[-4:]
+                for j, opt_match in enumerate(opt_slices):
+                    o_start = opt_match.start()
+                    o_end = opt_slices[j+1].start() if j + 1 < len(opt_slices) else len(q_text)
+                    opt_str = clean_option_text(q_text[o_start:o_end])
+                    options.append(opt_str)
+                q_text = q_text[:opt_slices[0].start()].strip()
+            else:
+                q_type = "NUMERICAL"
             
         questions.append({
             "question_number": q_num,
             "raw_content": clean_junk_advertisement_lines(q_text) or f"Question details {q_num}",
-            "question_type": "MCQ" if options else "NUMERICAL",
+            "question_type": q_type if combination_parsed else ("MCQ" if options else "NUMERICAL"),
             "options": options if options else None,
             "correct_answer": None,
             "explanation": None,
             "confidence": 0.6
         })
+
         
     return {
         "questions": sorted(questions, key=lambda x: x["question_number"]),
