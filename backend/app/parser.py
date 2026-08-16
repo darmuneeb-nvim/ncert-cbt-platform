@@ -44,22 +44,25 @@ def get_latex_ocr():
 
 def get_gemini_model(api_key: str = "", system_instruction: Optional[str] = None):
     """Initializes and returns an active Gemini GenerativeModel instance."""
-    key = api_key or settings.gemini_api_key
-    if not key:
+    key = (api_key or settings.gemini_api_key or "").strip()
+    if not key or not key.startswith("AIza"):
         return None
-    import google.generativeai as genai
-    genai.configure(api_key=key)
-    
-    # Prioritize active models
-    candidates = ["gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
-    for model_name in candidates:
-        try:
-            if system_instruction:
-                return genai.GenerativeModel(model_name, system_instruction=system_instruction)
-            return genai.GenerativeModel(model_name)
-        except Exception:
-            continue
-    return genai.GenerativeModel("gemini-3.7-flash")
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=key)
+        
+        candidates = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-flash-latest"]
+        for model_name in candidates:
+            try:
+                if system_instruction:
+                    return genai.GenerativeModel(model_name, system_instruction=system_instruction)
+                return genai.GenerativeModel(model_name)
+            except Exception:
+                continue
+        return genai.GenerativeModel("gemini-1.5-flash")
+    except Exception as e:
+        logger.warning(f"Could not initialize Gemini model: {e}")
+        return None
 
 def is_equation_heavy(text: str) -> bool:
     if not text or not text.strip():
